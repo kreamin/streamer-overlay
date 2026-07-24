@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
-import { CANVAS, DATA_DIR, STATE_FILE } from "./config.js";
+import path from "node:path";
+import { CANVAS } from "./constants.js";
 import type {
   AppState,
   FieldValue,
@@ -9,27 +10,30 @@ import type {
 } from "@stream-overlay/shared";
 
 /**
- * Owns the single source-of-truth AppState and persists it to data/state.json.
+ * Owns the single source-of-truth AppState and persists it to a JSON file.
  * Saves are debounced so rapid drags don't hammer the disk.
  */
 export class StateStore {
   private state: AppState;
   private saveTimer?: NodeJS.Timeout;
 
-  private constructor(state: AppState) {
+  private constructor(
+    state: AppState,
+    private readonly dataFile: string,
+  ) {
     this.state = state;
   }
 
-  static async load(): Promise<StateStore> {
-    await fs.mkdir(DATA_DIR, { recursive: true });
+  static async load(dataFile: string): Promise<StateStore> {
+    await fs.mkdir(path.dirname(dataFile), { recursive: true });
     try {
-      const raw = await fs.readFile(STATE_FILE, "utf8");
+      const raw = await fs.readFile(dataFile, "utf8");
       const parsed = JSON.parse(raw) as AppState;
       if (!parsed.canvas) parsed.canvas = { ...CANVAS };
       if (!Array.isArray(parsed.instances)) parsed.instances = [];
-      return new StateStore(parsed);
+      return new StateStore(parsed, dataFile);
     } catch {
-      return new StateStore({ canvas: { ...CANVAS }, instances: [] });
+      return new StateStore({ canvas: { ...CANVAS }, instances: [] }, dataFile);
     }
   }
 
@@ -96,7 +100,7 @@ export class StateStore {
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       void fs
-        .writeFile(STATE_FILE, JSON.stringify(this.state, null, 2))
+        .writeFile(this.dataFile, JSON.stringify(this.state, null, 2))
         .catch((err) => console.error("[state] save failed:", err));
     }, 300);
   }

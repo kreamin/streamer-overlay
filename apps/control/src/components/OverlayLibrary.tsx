@@ -10,9 +10,18 @@ export function OverlayLibrary({
 }) {
   return (
     <div>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/40">
-        Installed overlays
-      </h2>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-white/40">
+          Installed overlays
+        </h2>
+        <button
+          onClick={() => void fetch("/api/open-overlays-folder", { method: "POST" })}
+          className="rounded px-1.5 py-0.5 text-xs text-white/50 hover:bg-white/10 hover:text-white/80"
+          title="Open the overlays folder to add or share overlays"
+        >
+          Open folder
+        </button>
+      </div>
       {installed.length === 0 ? (
         <p className="text-sm text-white/40">
           Drop a folder into <code>overlays/</code> to add one.

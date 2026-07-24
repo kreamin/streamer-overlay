@@ -1,21 +1,57 @@
 // Electron main process.
-// Responsibilities:
-//   1. Start our existing server (if it isn't already running).
-//   2. Open a window showing the control panel.
-//   3. Kill the server we started when the app quits — so nothing lingers.
+//   dev:      requires the freshly-bundled server and runs it in-process with
+//             project-relative paths.
+//   packaged: same, but paths point at the app's resources (read-only) and the
+//             user's writable data dir; default overlays are seeded on first run.
+// Running the server in-process means it dies with the app — no orphan process.
 const { app, BrowserWindow } = require("electron");
-const { spawn, spawnSync } = require("node:child_process");
 const path = require("node:path");
+const fs = require("node:fs");
 const net = require("node:net");
 
 const PORT = 4747;
-const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
-const SERVER_ENTRY = path.join(PROJECT_ROOT, "packages", "server", "src", "index.ts");
+let server = null; // RunningServer handle (only set when WE started it)
 
-let serverProcess = null;
-let startedByUs = false;
+function resolvePaths() {
+  if (app.isPackaged) {
+    const res = process.resourcesPath;
+    const userData = app.getPath("userData");
+    return {
+      overlaysDir: path.join(userData, "overlays"),
+      dataFile: path.join(userData, "data", "state.json"),
+      publicDir: path.join(res, "public"),
+      overlayDist: path.join(res, "overlay"),
+      controlDist: path.join(res, "control"),
+      defaultOverlays: path.join(res, "overlays-default"),
+    };
+  }
+  const root = path.resolve(__dirname, "..", "..");
+  return {
+    overlaysDir: path.join(root, "overlays"),
+    dataFile: path.join(root, "data", "state.json"),
+    publicDir: path.join(root, "packages", "server", "public"),
+    overlayDist: path.join(root, "apps", "overlay", "dist"),
+    controlDist: path.join(root, "apps", "control", "dist"),
+    defaultOverlays: path.join(root, "overlays"),
+  };
+}
 
-/** Resolve true if something is already listening on the port. */
+// On first packaged run, copy the bundled default overlays into the user's
+// writable folder so they can edit them and drop in new ones.
+function seedOverlays(paths) {
+  if (!app.isPackaged) return;
+  try {
+    if (!fs.existsSync(paths.overlaysDir)) {
+      fs.mkdirSync(paths.overlaysDir, { recursive: true });
+      if (fs.existsSync(paths.defaultOverlays)) {
+        fs.cpSync(paths.defaultOverlays, paths.overlaysDir, { recursive: true });
+      }
+    }
+  } catch (err) {
+    console.error("[desktop] seeding overlays failed:", err);
+  }
+}
+
 function isPortInUse(port) {
   return new Promise((resolve) => {
     const socket = net.connect(port, "127.0.0.1");
@@ -25,59 +61,6 @@ function isPortInUse(port) {
     });
     socket.once("error", () => resolve(false));
   });
-}
-
-async function waitForServer(port, timeoutMs = 15000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (await isPortInUse(port)) return true;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return false;
-}
-
-async function startServer() {
-  // Reuse an already-running server (e.g. a terminal `npm run dev`) rather than
-  // spawning a duplicate.
-  if (await isPortInUse(PORT)) {
-    console.log(`[desktop] server already on :${PORT} — reusing it`);
-    return;
-  }
-
-  // Run the TypeScript server with tsx, using Electron's bundled Node.
-  const tsxCli = path.join(
-    path.dirname(require.resolve("tsx/package.json")),
-    "dist",
-    "cli.mjs",
-  );
-  serverProcess = spawn(process.execPath, [tsxCli, SERVER_ENTRY], {
-    cwd: PROJECT_ROOT,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-    stdio: "inherit",
-  });
-  startedByUs = true;
-  serverProcess.on("exit", (code) => {
-    console.log(`[desktop] server process exited (${code})`);
-    serverProcess = null;
-  });
-}
-
-/** Kill the server (and any children) — only if we were the ones who started it. */
-function stopServer() {
-  if (!serverProcess || !startedByUs) return;
-  const pid = serverProcess.pid;
-  serverProcess = null;
-  startedByUs = false;
-  if (process.platform === "win32") {
-    // /T kills the whole process tree so no node is left holding the port.
-    spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"]);
-  } else {
-    try {
-      process.kill(pid);
-    } catch {
-      /* already gone */
-    }
-  }
 }
 
 function createWindow() {
@@ -91,21 +74,34 @@ function createWindow() {
   win.loadURL(`http://localhost:${PORT}/control/`);
 }
 
-app.whenReady().then(async () => {
-  await startServer();
-  const ready = await waitForServer(PORT);
-  if (!ready) {
-    console.error("[desktop] server did not become ready in time");
-  }
-  createWindow();
+async function boot() {
+  const paths = resolvePaths();
+  seedOverlays(paths);
 
+  if (await isPortInUse(PORT)) {
+    // Something (e.g. a `npm run dev` session) already owns the port — reuse it.
+    console.log(`[desktop] server already on :${PORT} — reusing it`);
+  } else {
+    const { startServer } = require(path.join(__dirname, "build", "server.cjs"));
+    server = await startServer({
+      port: PORT,
+      overlaysDir: paths.overlaysDir,
+      dataFile: paths.dataFile,
+      publicDir: paths.publicDir,
+      overlayDist: paths.overlayDist,
+      controlDist: paths.controlDist,
+    });
+  }
+
+  createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+}
 
-// Single-purpose tool: closing the window quits the app (and stops the server).
+app.whenReady().then(boot);
+
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", stopServer);
-app.on("will-quit", stopServer);
-process.on("exit", stopServer);
+app.on("will-quit", async () => {
+  if (server) await server.close();
+});

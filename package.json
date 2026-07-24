@@ -13,9 +13,12 @@
     "dev:overlay": "npm run dev --workspace @stream-overlay/overlay",
     "dev:control": "npm run dev --workspace @stream-overlay/control",
     "build": "npm run build --workspace @stream-overlay/overlay && npm run build --workspace @stream-overlay/control",
-    "desktop": "npm run build && npm run start --workspace @stream-overlay/desktop"
+    "bundle:server": "esbuild packages/server/src/server.ts --bundle --platform=node --format=cjs --outfile=apps/desktop/build/server.cjs",
+    "desktop": "npm run build && npm run bundle:server && npm run start --workspace @stream-overlay/desktop",
+    "dist:win": "npm run build && npm run bundle:server && npm run dist --workspace @stream-overlay/desktop"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "esbuild": "^0.24.2"
   }
 }

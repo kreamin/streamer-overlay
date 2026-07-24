@@ -1,13 +1,44 @@
 {
   "name": "@stream-overlay/desktop",
+  "productName": "Stream Overlay",
   "version": "0.0.0",
   "private": true,
   "description": "Desktop shell that boots the server and opens the control panel.",
+  "author": "Noah",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^33.3.0"
+    "electron": "^33.3.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.noah.streamoverlay",
+    "productName": "Stream Overlay",
+    "electronVersion": "33.4.11",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "build/server.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "../overlay/dist", "to": "overlay" },
+      { "from": "../control/dist", "to": "control" },
+      { "from": "../../packages/server/public", "to": "public" },
+      { "from": "../../overlays", "to": "overlays-default" }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

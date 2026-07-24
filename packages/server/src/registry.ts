@@ -1,7 +1,6 @@
 import chokidar from "chokidar";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { OVERLAYS_DIR } from "./config.js";
 import type { InstalledOverlay, OverlayManifest } from "@stream-overlay/shared";
 
 type Listener = (list: InstalledOverlay[]) => void;
@@ -16,9 +15,11 @@ export class OverlayRegistry {
   private listeners = new Set<Listener>();
   private scanQueued = false;
 
+  constructor(private readonly overlaysDir: string) {}
+
   async start(): Promise<void> {
-    await fs.mkdir(OVERLAYS_DIR, { recursive: true });
-    const watcher = chokidar.watch(OVERLAYS_DIR, {
+    await fs.mkdir(this.overlaysDir, { recursive: true });
+    const watcher = chokidar.watch(this.overlaysDir, {
       ignoreInitial: true,
       depth: 2,
     });
@@ -52,14 +53,14 @@ export class OverlayRegistry {
     const next = new Map<string, InstalledOverlay>();
     let dirs: string[] = [];
     try {
-      const entries = await fs.readdir(OVERLAYS_DIR, { withFileTypes: true });
+      const entries = await fs.readdir(this.overlaysDir, { withFileTypes: true });
       dirs = entries.filter((d) => d.isDirectory()).map((d) => d.name);
     } catch {
       // folder missing — treated as no overlays installed
     }
 
     for (const dir of dirs) {
-      const manifestPath = path.join(OVERLAYS_DIR, dir, "manifest.json");
+      const manifestPath = path.join(this.overlaysDir, dir, "manifest.json");
       let manifest: OverlayManifest;
       try {
         manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as OverlayManifest;
