@@ -1,0 +1,14 @@
+{
+  "id": "webcam-border",
+  "name": "Webcam Border",
+  "version": "1.0.0",
+  "author": "Noah",
+  "description": "A recolorable frame to sit on top of a webcam. Center is transparent so the cam shows through.",
+  "defaultSize": { "width": 480, "height": 360 },
+  "fields": [
+    { "id": "color", "label": "Border Color", "type": "color", "default": "#7c3aed" },
+    { "id": "thickness", "label": "Thickness (px)", "type": "number", "default": 8, "live": true, "step": 1, "min": 0, "max": 120 },
+    { "id": "radius", "label": "Corner Radius (px)", "type": "number", "default": 16, "step": 2, "min": 0, "max": 400 },
+    { "id": "glow", "label": "Glow", "type": "number", "default": 0, "step": 2, "min": 0, "max": 80 }
+  ]
+}

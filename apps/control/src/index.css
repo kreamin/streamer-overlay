@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0b0e14;
+  color: #e6e8ec;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}

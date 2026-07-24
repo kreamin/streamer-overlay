@@ -1,0 +1,88 @@
+import { Rnd } from "react-rnd";
+import type {
+  AppState,
+  ClientMessage,
+  InstalledOverlay,
+} from "@stream-overlay/shared";
+
+const SCALE = 0.5; // 1920x1080 shown at 960x540
+
+/**
+ * A scaled mirror of the OBS canvas. Each instance is a draggable/resizable
+ * box; drag/resize commits the new layout to the server (and thus OBS).
+ * react-rnd's `scale` prop keeps pointer movement accurate under the CSS scale.
+ */
+export function Canvas({
+  state,
+  installed,
+  selectedId,
+  onSelect,
+  send,
+}: {
+  state: AppState;
+  installed: InstalledOverlay[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  send: (msg: ClientMessage) => void;
+}) {
+  const { width, height } = state.canvas;
+  const nameOf = (overlayId: string) =>
+    installed.find((o) => o.manifest.id === overlayId)?.manifest.name ?? overlayId;
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-lg bg-black/60 bg-[radial-gradient(circle,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:24px_24px] ring-1 ring-white/10"
+      style={{ width: width * SCALE, height: height * SCALE }}
+    >
+      <div
+        className="absolute left-0 top-0"
+        style={{ width, height, transform: `scale(${SCALE})`, transformOrigin: "top left" }}
+      >
+        {state.instances.map((inst) => {
+          const selected = inst.instanceId === selectedId;
+          return (
+            <Rnd
+              key={inst.instanceId}
+              scale={SCALE}
+              bounds="parent"
+              size={{ width: inst.size.width, height: inst.size.height }}
+              position={{ x: inst.position.x, y: inst.position.y }}
+              onDragStart={() => onSelect(inst.instanceId)}
+              onDragStop={(_e, d) =>
+                send({
+                  type: "setLayout",
+                  instanceId: inst.instanceId,
+                  position: { x: Math.round(d.x), y: Math.round(d.y) },
+                })
+              }
+              onResizeStop={(_e, _dir, ref, _delta, pos) =>
+                send({
+                  type: "setLayout",
+                  instanceId: inst.instanceId,
+                  size: {
+                    width: Math.round(parseFloat(ref.style.width)),
+                    height: Math.round(parseFloat(ref.style.height)),
+                  },
+                  position: { x: Math.round(pos.x), y: Math.round(pos.y) },
+                })
+              }
+              onClick={() => onSelect(inst.instanceId)}
+              // Selected overlay pops to the top in the editor only (9999) so
+              // it's always grabbable; everyone else uses their real output z.
+              style={{ zIndex: selected ? 9999 : inst.z }}
+              className={`flex items-center justify-center border-2 text-center ${
+                selected
+                  ? "border-indigo-400 bg-indigo-500/20"
+                  : "border-dashed border-white/30 bg-white/5"
+              } ${inst.active ? "" : "opacity-40"}`}
+            >
+              <span className="pointer-events-none select-none px-2 text-2xl text-white/80">
+                {nameOf(inst.overlayId)}
+              </span>
+            </Rnd>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

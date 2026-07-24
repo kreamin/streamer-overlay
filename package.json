@@ -1,0 +1,21 @@
+{
+  "name": "stream-overlay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,overlay,control -c blue,green,magenta \"npm:dev:server\" \"npm:dev:overlay\" \"npm:dev:control\"",
+    "dev:server": "npm run dev --workspace @stream-overlay/server",
+    "dev:overlay": "npm run dev --workspace @stream-overlay/overlay",
+    "dev:control": "npm run dev --workspace @stream-overlay/control",
+    "build": "npm run build --workspace @stream-overlay/overlay && npm run build --workspace @stream-overlay/control",
+    "desktop": "npm run build && npm run start --workspace @stream-overlay/desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

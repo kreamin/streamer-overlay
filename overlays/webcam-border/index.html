@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Full-size frame: only the border is painted, the middle stays
+         transparent so the webcam source beneath shows through. -->
+    <div class="frame" id="frame"></div>
+
+    <!-- Host bridge first, then our logic that reacts to value changes. -->
+    <script src="/overlay-runtime.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

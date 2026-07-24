@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- data-bind spans get filled in live by the overlay host (wired in Phase 2). -->
+  <div class="goal">
+    <span class="count"><span data-bind="subs">0</span>/<span data-bind="goalSubs">100</span></span>
+    <span class="label">subscribers</span>
+  </div>
+  <script src="/overlay-runtime.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

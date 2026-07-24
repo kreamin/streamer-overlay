@@ -1,0 +1,13 @@
+{
+  "id": "subscriber-goal",
+  "name": "Subscriber Goal",
+  "version": "1.0.0",
+  "author": "Noah",
+  "description": "Shows current subscribers out of a goal, e.g. 42/100.",
+  "defaultSize": { "width": 340, "height": 96 },
+  "fields": [
+    { "id": "subs", "label": "Current Subs", "type": "number", "default": 0, "live": true, "step": 1, "min": 0 },
+    { "id": "goalSubs", "label": "Goal", "type": "number", "default": 100, "step": 5, "min": 1 },
+    { "id": "color", "label": "Text Color", "type": "color", "default": "#ffffff" }
+  ]
+}
