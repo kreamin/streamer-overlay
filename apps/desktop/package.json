@@ -1,9 +1,9 @@
 {
   "name": "@stream-overlay/desktop",
-  "productName": "Stream Overlay",
+  "productName": "kreamin's Streamin Overlay",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop shell that boots the server and opens the control panel.",
+  "description": "kreamin's Streamin Overlay",
   "author": "Noah",
   "main": "build/main.cjs",
   "scripts": {
@@ -16,8 +16,8 @@
     "electron-updater": "^6.3.9"
   },
   "build": {
-    "appId": "com.noah.streamoverlay",
-    "productName": "Stream Overlay",
+    "appId": "com.kreamin.streaminoverlay",
+    "productName": "kreamin's Streamin Overlay",
     "electronVersion": "33.4.11",
     "npmRebuild": false,
     "directories": {

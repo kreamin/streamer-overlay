@@ -72,7 +72,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
-    title: "Stream Overlay Control",
+    title: "kreamin's Streamin Overlay",
     backgroundColor: "#0b0e14",
     autoHideMenuBar: true,
   });
