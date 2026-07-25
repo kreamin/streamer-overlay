@@ -65,8 +65,23 @@ export interface OverlayInstance {
   position: OverlayPosition;
   size: OverlaySize;
   values: Record<string, FieldValue>;
+  /**
+   * Per-field live bindings: fieldId -> variable key. When set, the server keeps
+   * that field's value in sync with the named variable (e.g. from Streamer.bot).
+   * A field with no entry here is "manual" (edited by hand in the control panel).
+   */
+  bindings?: Record<string, string>;
   /** Stacking order; higher renders on top. */
   z: number;
+}
+
+/** Live variables pushed in by integrations (key -> value). */
+export type Variables = Record<string, FieldValue>;
+
+/** Status of external integrations that push variables to the server. */
+export interface IntegrationStatus {
+  /** Whether a Streamer.bot (or other) client is connected to the ingest endpoint. */
+  streamerbotConnected: boolean;
 }
 
 export interface CanvasConfig {
@@ -84,9 +99,17 @@ export interface AppState {
 
 /** Messages the server sends to connected clients. */
 export type ServerMessage =
-  | { type: "hello"; state: AppState; installed: InstalledOverlay[] }
+  | {
+      type: "hello";
+      state: AppState;
+      installed: InstalledOverlay[];
+      variables: Variables;
+      integration: IntegrationStatus;
+    }
   | { type: "state"; state: AppState }
-  | { type: "installed"; installed: InstalledOverlay[] };
+  | { type: "installed"; installed: InstalledOverlay[] }
+  | { type: "variables"; variables: Variables }
+  | { type: "integration"; integration: IntegrationStatus };
 
 /** Messages clients (control panel) send to the server. */
 export type ClientMessage =
@@ -101,4 +124,6 @@ export type ClientMessage =
       z?: number;
     }
   | { type: "setValue"; instanceId: string; fieldId: string; value: FieldValue }
-  | { type: "adjustValue"; instanceId: string; fieldId: string; delta: number };
+  | { type: "adjustValue"; instanceId: string; fieldId: string; delta: number }
+  // Bind a field to a live variable (null = back to manual).
+  | { type: "setBinding"; instanceId: string; fieldId: string; variableKey: string | null };

@@ -1,18 +1,19 @@
 {
   "name": "@stream-overlay/desktop",
   "productName": "Stream Overlay",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Desktop shell that boots the server and opens the control panel.",
   "author": "Noah",
-  "main": "main.js",
+  "main": "build/main.cjs",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"
   },
   "devDependencies": {
     "electron": "^33.3.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "electron-updater": "^6.3.9"
   },
   "build": {
     "appId": "com.noah.streamoverlay",
@@ -22,9 +23,15 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kreamin",
+        "repo": "streamer-overlay"
+      }
+    ],
     "files": [
-      "main.js",
-      "build/server.cjs",
+      "build/**",
       "package.json"
     ],
     "extraResources": [

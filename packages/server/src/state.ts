@@ -7,6 +7,7 @@ import type {
   OverlayInstance,
   OverlayPosition,
   OverlaySize,
+  Variables,
 } from "@stream-overlay/shared";
 
 /**
@@ -90,6 +91,35 @@ export class StateStore {
     const base = typeof current === "number" ? current : Number(current) || 0;
     inst.values[fieldId] = base + delta;
     this.touched();
+  }
+
+  /** Bind a field to a live variable, or pass null to return it to manual. */
+  setBinding(instanceId: string, fieldId: string, variableKey: string | null): void {
+    const inst = this.find(instanceId);
+    if (!inst) return;
+    if (!inst.bindings) inst.bindings = {};
+    if (variableKey) inst.bindings[fieldId] = variableKey;
+    else delete inst.bindings[fieldId];
+    this.touched();
+  }
+
+  /**
+   * Push current variable values into any fields bound to them.
+   * Returns true if any value actually changed (so callers can skip broadcasts).
+   */
+  applyBoundValues(variables: Variables): boolean {
+    let changed = false;
+    for (const inst of this.state.instances) {
+      if (!inst.bindings) continue;
+      for (const [fieldId, key] of Object.entries(inst.bindings)) {
+        if (key in variables && inst.values[fieldId] !== variables[key]) {
+          inst.values[fieldId] = variables[key];
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.touched();
+    return changed;
   }
 
   private find(instanceId: string): OverlayInstance | undefined {

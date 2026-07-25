@@ -1,24 +1,28 @@
 import type {
   ClientMessage,
+  FieldValue,
   InstalledOverlay,
   OverlayFieldDef,
   OverlayInstance,
+  Variables,
 } from "@stream-overlay/shared";
 
 /**
  * Auto-generates controls for the selected instance from its manifest fields.
- * `live` number fields get prominent +/- quick-adjust buttons (e.g. bump subs
- * mid-stream); everything else gets a plain input.
+ * Each field can be **Manual** (edited here) or **Live** (bound to a variable
+ * pushed in by Streamer.bot). Live number fields still get quick −/+ buttons.
  */
 export function FieldControls({
   instance,
   overlay,
+  variables,
   send,
   onBringToFront,
   onSendToBack,
 }: {
   instance: OverlayInstance;
   overlay: InstalledOverlay;
+  variables: Variables;
   send: (msg: ClientMessage) => void;
   onBringToFront: () => void;
   onSendToBack: () => void;
@@ -53,6 +57,8 @@ export function FieldControls({
             key={field.id}
             field={field}
             value={instance.values[field.id]}
+            boundKey={instance.bindings?.[field.id]}
+            variables={variables}
             onSet={(value) =>
               send({ type: "setValue", instanceId: instance.instanceId, fieldId: field.id, value })
             }
@@ -62,6 +68,14 @@ export function FieldControls({
                 instanceId: instance.instanceId,
                 fieldId: field.id,
                 delta,
+              })
+            }
+            onBind={(variableKey) =>
+              send({
+                type: "setBinding",
+                instanceId: instance.instanceId,
+                fieldId: field.id,
+                variableKey,
               })
             }
           />
@@ -74,21 +88,57 @@ export function FieldControls({
 function Field({
   field,
   value,
+  boundKey,
+  variables,
   onSet,
   onAdjust,
+  onBind,
 }: {
   field: OverlayFieldDef;
-  value: number | string | boolean | undefined;
-  onSet: (value: number | string | boolean) => void;
+  value: FieldValue | undefined;
+  boundKey: string | undefined;
+  variables: Variables;
+  onSet: (value: FieldValue) => void;
   onAdjust: (delta: number) => void;
+  onBind: (variableKey: string | null) => void;
 }) {
   const step = field.step ?? 1;
+  const variableKeys = Object.keys(variables);
+  // Only show the source picker if there's something to bind to (or already bound).
+  const showSource = variableKeys.length > 0 || boundKey;
 
   return (
     <label className="block">
-      <span className="mb-1 block text-sm text-white/70">{field.label}</span>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-sm text-white/70">{field.label}</span>
+        {showSource && (
+          <select
+            value={boundKey ?? ""}
+            onChange={(e) => onBind(e.target.value || null)}
+            className="max-w-[55%] truncate rounded bg-black/40 px-1.5 py-0.5 text-xs text-white/70 ring-1 ring-white/10"
+            title="Where this value comes from"
+          >
+            <option value="">Manual</option>
+            {variableKeys.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+            {boundKey && !variableKeys.includes(boundKey) && (
+              <option value={boundKey}>{boundKey} (waiting…)</option>
+            )}
+          </select>
+        )}
+      </div>
 
-      {field.type === "number" && field.live ? (
+      {boundKey ? (
+        <div className="flex items-center gap-2 rounded-md bg-indigo-500/10 px-3 py-2 text-sm ring-1 ring-indigo-400/30">
+          <span className="text-indigo-300">🔗 Live</span>
+          <span className="ml-auto tabular-nums text-white/80">
+            {String(variables[boundKey] ?? value ?? "—")}
+          </span>
+        </div>
+      ) : field.type === "number" && field.live ? (
         <div className="flex items-center gap-2">
           <button
             onClick={() => onAdjust(-step)}

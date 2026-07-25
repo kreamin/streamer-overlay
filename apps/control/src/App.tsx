@@ -6,7 +6,7 @@ import { FieldControls } from "./components/FieldControls";
 import { Canvas } from "./components/Canvas";
 
 export function App() {
-  const { state, installed, connected, send } = useControlStore();
+  const { state, installed, variables, integration, connected, send } = useControlStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (!state) {
@@ -27,10 +27,27 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-white/10 px-5 py-3">
+      <header className="flex items-center gap-4 border-b border-white/10 px-5 py-3">
         <h1 className="text-sm font-semibold">Stream Overlay · Control Panel</h1>
         <span
           className={`ml-auto flex items-center gap-1.5 text-xs ${
+            integration.streamerbotConnected ? "text-emerald-400" : "text-white/40"
+          }`}
+          title={
+            integration.streamerbotConnected
+              ? "Streamer.bot is pushing live data"
+              : "No Streamer.bot client connected to ws://127.0.0.1:4747/ingest"
+          }
+        >
+          <span
+            className={`size-2 rounded-full ${
+              integration.streamerbotConnected ? "bg-emerald-400" : "bg-white/20"
+            }`}
+          />
+          Streamer.bot
+        </span>
+        <span
+          className={`flex items-center gap-1.5 text-xs ${
             connected ? "text-emerald-400" : "text-amber-400"
           }`}
         >
@@ -71,6 +88,7 @@ export function App() {
             <FieldControls
               instance={selected}
               overlay={selectedOverlay}
+              variables={variables}
               send={send}
               onBringToFront={() =>
                 send({ type: "setLayout", instanceId: selected.instanceId, z: maxZ + 1 })

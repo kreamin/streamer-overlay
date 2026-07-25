@@ -1,0 +1,32 @@
+name: Release
+
+# Push a tag like v0.1.0 to build the Windows installer and publish a GitHub
+# Release. Installed apps pick it up automatically on next launch.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+permissions:
+  contents: write # needed to create the Release
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and publish
+        # GITHUB_TOKEN lets electron-builder create the Release in this repo.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release:win

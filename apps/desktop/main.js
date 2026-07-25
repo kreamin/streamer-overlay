@@ -1,9 +1,7 @@
-// Electron main process.
-//   dev:      requires the freshly-bundled server and runs it in-process with
-//             project-relative paths.
-//   packaged: same, but paths point at the app's resources (read-only) and the
-//             user's writable data dir; default overlays are seeded on first run.
-// Running the server in-process means it dies with the app — no orphan process.
+// Electron main process (bundled to build/main.cjs by esbuild before launch).
+//   - Runs the server in-process (build/server.cjs, beside this file).
+//   - Env-aware paths via app.isPackaged.
+//   - Checks GitHub Releases for updates on launch (packaged only).
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -12,6 +10,7 @@ const net = require("node:net");
 const PORT = 4747;
 let server = null; // RunningServer handle (only set when WE started it)
 
+// At runtime this file lives in <app>/build, next to server.cjs.
 function resolvePaths() {
   if (app.isPackaged) {
     const res = process.resourcesPath;
@@ -25,7 +24,8 @@ function resolvePaths() {
       defaultOverlays: path.join(res, "overlays-default"),
     };
   }
-  const root = path.resolve(__dirname, "..", "..");
+  // build -> desktop -> apps -> project root
+  const root = path.resolve(__dirname, "..", "..", "..");
   return {
     overlaysDir: path.join(root, "overlays"),
     dataFile: path.join(root, "data", "state.json"),
@@ -36,15 +36,20 @@ function resolvePaths() {
   };
 }
 
-// On first packaged run, copy the bundled default overlays into the user's
-// writable folder so they can edit them and drop in new ones.
+// Seed default overlays into the user's writable folder. Adds any bundled
+// overlay that isn't already there (so new defaults arrive with app updates),
+// but never overwrites overlays the user already has.
 function seedOverlays(paths) {
   if (!app.isPackaged) return;
   try {
-    if (!fs.existsSync(paths.overlaysDir)) {
-      fs.mkdirSync(paths.overlaysDir, { recursive: true });
-      if (fs.existsSync(paths.defaultOverlays)) {
-        fs.cpSync(paths.defaultOverlays, paths.overlaysDir, { recursive: true });
+    fs.mkdirSync(paths.overlaysDir, { recursive: true });
+    if (!fs.existsSync(paths.defaultOverlays)) return;
+    for (const entry of fs.readdirSync(paths.defaultOverlays, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dest = path.join(paths.overlaysDir, entry.name);
+      if (!fs.existsSync(dest)) {
+        fs.cpSync(path.join(paths.defaultOverlays, entry.name), dest, { recursive: true });
+        console.log(`[desktop] seeded overlay: ${entry.name}`);
       }
     }
   } catch (err) {
@@ -74,15 +79,37 @@ function createWindow() {
   win.loadURL(`http://localhost:${PORT}/control/`);
 }
 
+// Check GitHub Releases for a newer version, download it, install on quit.
+function initAutoUpdater() {
+  if (!app.isPackaged) return;
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require("electron-updater"));
+  } catch (err) {
+    console.error("[updater] failed to load:", err);
+    return;
+  }
+  autoUpdater.on("error", (err) => console.error("[updater] error:", err?.message ?? err));
+  autoUpdater.on("update-available", (info) =>
+    console.log("[updater] update available:", info?.version),
+  );
+  autoUpdater.on("update-not-available", () => console.log("[updater] up to date"));
+  autoUpdater.on("update-downloaded", (info) =>
+    console.log(`[updater] ${info?.version} downloaded — installs on quit`),
+  );
+  autoUpdater.checkForUpdatesAndNotify().catch((err) =>
+    console.error("[updater] check failed:", err?.message ?? err),
+  );
+}
+
 async function boot() {
   const paths = resolvePaths();
   seedOverlays(paths);
 
   if (await isPortInUse(PORT)) {
-    // Something (e.g. a `npm run dev` session) already owns the port — reuse it.
     console.log(`[desktop] server already on :${PORT} — reusing it`);
   } else {
-    const { startServer } = require(path.join(__dirname, "build", "server.cjs"));
+    const { startServer } = require(path.join(__dirname, "server.cjs"));
     server = await startServer({
       port: PORT,
       overlaysDir: paths.overlaysDir,
@@ -94,13 +121,14 @@ async function boot() {
   }
 
   createWindow();
+  initAutoUpdater();
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 }
 
 app.whenReady().then(boot);
-
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", async () => {
   if (server) await server.close();

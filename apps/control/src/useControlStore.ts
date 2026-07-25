@@ -3,16 +3,22 @@ import type {
   AppState,
   ClientMessage,
   InstalledOverlay,
+  IntegrationStatus,
   ServerMessage,
+  Variables,
 } from "@stream-overlay/shared";
 
 /**
- * Websocket connection for the control panel. Keeps the latest state +
- * installed list, and exposes `send` for firing commands at the server.
+ * Websocket connection for the control panel. Keeps the latest state, installed
+ * list, live variables, and integration status, and exposes `send`.
  */
 export function useControlStore() {
   const [state, setState] = useState<AppState | null>(null);
   const [installed, setInstalled] = useState<InstalledOverlay[]>([]);
+  const [variables, setVariables] = useState<Variables>({});
+  const [integration, setIntegration] = useState<IntegrationStatus>({
+    streamerbotConnected: false,
+  });
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -30,10 +36,16 @@ export function useControlStore() {
         if (msg.type === "hello") {
           setState(msg.state);
           setInstalled(msg.installed);
+          setVariables(msg.variables);
+          setIntegration(msg.integration);
         } else if (msg.type === "state") {
           setState(msg.state);
         } else if (msg.type === "installed") {
           setInstalled(msg.installed);
+        } else if (msg.type === "variables") {
+          setVariables(msg.variables);
+        } else if (msg.type === "integration") {
+          setIntegration(msg.integration);
         }
       };
       socket.onclose = () => {
@@ -55,5 +67,5 @@ export function useControlStore() {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
   }, []);
 
-  return { state, installed, connected, send };
+  return { state, installed, variables, integration, connected, send };
 }
