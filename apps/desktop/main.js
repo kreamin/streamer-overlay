@@ -80,26 +80,48 @@ function createWindow() {
 }
 
 // Check GitHub Releases for a newer version, download it, install on quit.
+// Logs everything to <userData>/update.log so we can diagnose failures.
 function initAutoUpdater() {
   if (!app.isPackaged) return;
   let autoUpdater;
   try {
     ({ autoUpdater } = require("electron-updater"));
   } catch (err) {
-    console.error("[updater] failed to load:", err);
     return;
   }
-  autoUpdater.on("error", (err) => console.error("[updater] error:", err?.message ?? err));
-  autoUpdater.on("update-available", (info) =>
-    console.log("[updater] update available:", info?.version),
-  );
-  autoUpdater.on("update-not-available", () => console.log("[updater] up to date"));
-  autoUpdater.on("update-downloaded", (info) =>
-    console.log(`[updater] ${info?.version} downloaded — installs on quit`),
-  );
-  autoUpdater.checkForUpdatesAndNotify().catch((err) =>
-    console.error("[updater] check failed:", err?.message ?? err),
-  );
+
+  const logPath = path.join(app.getPath("userData"), "update.log");
+  const write = (level, ...parts) => {
+    try {
+      fs.appendFileSync(
+        logPath,
+        `[${new Date().toISOString()}] ${level} ${parts.map(String).join(" ")}\n`,
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+  autoUpdater.logger = {
+    info: (...a) => write("INFO", ...a),
+    warn: (...a) => write("WARN", ...a),
+    error: (...a) => write("ERROR", ...a),
+    debug: (...a) => write("DEBUG", ...a),
+  };
+
+  // Differential (blockmap-patch) downloads are a common source of silent
+  // failures — force a clean full download instead.
+  autoUpdater.autoDownload = true;
+  autoUpdater.disableDifferentialDownload = true;
+
+  autoUpdater.on("checking-for-update", () => write("EVT", "checking-for-update"));
+  autoUpdater.on("update-available", (i) => write("EVT", "update-available", i?.version));
+  autoUpdater.on("update-not-available", (i) => write("EVT", "update-not-available", i?.version));
+  autoUpdater.on("download-progress", (p) => write("EVT", "download", Math.round(p?.percent ?? 0) + "%"));
+  autoUpdater.on("update-downloaded", (i) => write("EVT", "update-downloaded", i?.version));
+  autoUpdater.on("error", (e) => write("EVT", "error", e?.message ?? e, "|", e?.stack ?? ""));
+
+  write("BOOT", "app", app.getVersion(), "checking for updates");
+  autoUpdater.checkForUpdatesAndNotify().catch((e) => write("EVT", "check-rejected", e?.message ?? e));
 }
 
 async function boot() {
