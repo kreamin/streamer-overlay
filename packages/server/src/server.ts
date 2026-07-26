@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import express from "express";
@@ -6,6 +7,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { StateStore } from "./state.js";
 import { OverlayRegistry } from "./registry.js";
 import { VariableStore } from "./variables.js";
+import { StreamerbotConnector } from "./streamerbot.js";
 import type {
   ClientMessage,
   FieldValue,
@@ -23,6 +25,8 @@ export interface ServerConfig {
   publicDir: string;
   overlayDist: string;
   controlDist: string;
+  /** Writable dir for user-uploaded media (gifs/images), served at /media. */
+  mediaDir: string;
 }
 
 export interface RunningServer {
@@ -39,14 +43,36 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   const variables = new VariableStore();
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "30mb" })); // gifs can be a few MB (base64)
   app.use("/overlays", express.static(config.overlaysDir));
+  app.use("/media", express.static(config.mediaDir));
   app.get("/overlay-runtime.js", (_req, res) => {
     res.sendFile(path.join(config.publicDir, "overlay-runtime.js"));
   });
   app.post("/api/open-overlays-folder", (_req, res) => {
     openFolder(config.overlaysDir);
     res.json({ ok: true });
+  });
+  // Upload an image/gif (data URL) → saved to mediaDir → returns its /media URL.
+  app.post("/api/upload", async (req, res) => {
+    try {
+      const { filename, dataUrl } = (req.body ?? {}) as {
+        filename?: string;
+        dataUrl?: string;
+      };
+      const match = typeof dataUrl === "string" && /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+      if (!match) {
+        res.status(400).json({ error: "invalid dataUrl" });
+        return;
+      }
+      const buffer = Buffer.from(match[2], "base64");
+      const name = `${crypto.randomUUID()}${extFor(match[1], filename)}`;
+      await fs.mkdir(config.mediaDir, { recursive: true });
+      await fs.writeFile(path.join(config.mediaDir, name), buffer);
+      res.json({ url: `/media/${name}` });
+    } catch {
+      res.status(500).json({ error: "upload failed" });
+    }
   });
   app.get("/api/state", (_req, res) => res.json(store.get()));
   app.get("/api/installed", (_req, res) => res.json(registry.list()));
@@ -57,11 +83,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
 
-  // Track how many integration clients are connected (Streamer.bot etc.).
+  // Push clients (Streamer.bot Custom WebSocket Client → /ingest, advanced).
   const ingestSockets = new Set<WebSocket>();
-  const integration = (): IntegrationStatus => ({
-    streamerbotConnected: ingestSockets.size > 0,
-  });
 
   function broadcast(message: ServerMessage): void {
     const data = JSON.stringify(message);
@@ -72,7 +95,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     }
   }
 
-  registry.onChange((installed) => broadcast({ type: "installed", installed }));
+  const integration = (): IntegrationStatus => ({
+    streamerbot: streamerbot.getStatus(),
+    ingestClients: ingestSockets.size,
+  });
 
   // A variable changed: refresh bound fields and tell the control panel.
   function onVariablesChanged(): void {
@@ -81,6 +107,19 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       broadcast({ type: "state", state: store.get() });
     }
   }
+
+  // Pull connector: mirrors the user's Streamer.bot globals into the variable
+  // store whenever it's enabled in settings.
+  const streamerbot = new StreamerbotConnector(
+    (vars) => {
+      variables.setMany(vars);
+      onVariablesChanged();
+    },
+    () => broadcast({ type: "integration", integration: integration() }),
+  );
+  streamerbot.configure(store.get().streamerbot);
+
+  registry.onChange((installed) => broadcast({ type: "installed", installed }));
 
   wss.on("connection", (socket, req) => {
     if ((req.url ?? "").startsWith(INGEST_PATH)) {
@@ -132,6 +171,19 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       } catch {
         return;
       }
+      // Streamer.bot config lives on the connector (in this closure), so handle
+      // it here rather than in the shared handle().
+      if (message.type === "setStreamerbot") {
+        const cfg = store.setStreamerbot(message);
+        streamerbot.configure(cfg);
+        broadcast({ type: "state", state: store.get() });
+        broadcast({ type: "integration", integration: integration() });
+        return;
+      }
+      if (message.type === "play") {
+        broadcast({ type: "pulse", instanceId: message.instanceId });
+        return;
+      }
       handle(message, store, registry, variables);
       broadcast({ type: "state", state: store.get() });
     });
@@ -143,6 +195,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   return {
     close: () =>
       new Promise<void>((resolve) => {
+        streamerbot.stop();
         wss.close();
         httpServer.close(() => resolve());
       }),
@@ -211,6 +264,9 @@ function handle(
       // Apply the current value immediately so binding takes effect at once.
       store.applyBoundValues(variables.all());
       break;
+    case "setCanvas":
+      store.setCanvas(message.width, message.height);
+      break;
   }
 }
 
@@ -226,6 +282,21 @@ function makeInstance(overlay: InstalledOverlay, store: StateStore): OverlayInst
     values,
     z: store.nextZ(),
   };
+}
+
+/** Choose a file extension from the mime type (falling back to the filename). */
+function extFor(mime: string, filename?: string): string {
+  const byMime: Record<string, string> = {
+    "image/gif": ".gif",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/apng": ".apng",
+    "image/svg+xml": ".svg",
+  };
+  if (byMime[mime]) return byMime[mime];
+  const ext = filename ? path.extname(filename) : "";
+  return ext || ".bin";
 }
 
 function openFolder(dir: string): void {

@@ -17,7 +17,8 @@ export function useControlStore() {
   const [installed, setInstalled] = useState<InstalledOverlay[]>([]);
   const [variables, setVariables] = useState<Variables>({});
   const [integration, setIntegration] = useState<IntegrationStatus>({
-    streamerbotConnected: false,
+    streamerbot: { enabled: false, connected: false, globalCount: 0 },
+    ingestClients: 0,
   });
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);

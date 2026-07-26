@@ -5,7 +5,7 @@
 
 // ---- Overlay package format (manifest.json) -------------------------------
 
-export type FieldType = "number" | "text" | "boolean" | "color";
+export type FieldType = "number" | "text" | "boolean" | "color" | "image" | "trigger";
 
 /** A single configurable field an overlay declares in its manifest. */
 export interface OverlayFieldDef {
@@ -78,10 +78,24 @@ export interface OverlayInstance {
 /** Live variables pushed in by integrations (key -> value). */
 export type Variables = Record<string, FieldValue>;
 
-/** Status of external integrations that push variables to the server. */
+/** Configuration for the Streamer.bot pull connection (persisted in AppState). */
+export interface StreamerbotConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+}
+
+/** Runtime status of external integrations. */
 export interface IntegrationStatus {
-  /** Whether a Streamer.bot (or other) client is connected to the ingest endpoint. */
-  streamerbotConnected: boolean;
+  streamerbot: {
+    enabled: boolean;
+    connected: boolean;
+    error?: string;
+    /** How many Streamer.bot globals are currently available as variables. */
+    globalCount: number;
+  };
+  /** Number of push clients connected to the /ingest endpoint (advanced). */
+  ingestClients: number;
 }
 
 export interface CanvasConfig {
@@ -93,6 +107,7 @@ export interface CanvasConfig {
 export interface AppState {
   canvas: CanvasConfig;
   instances: OverlayInstance[];
+  streamerbot: StreamerbotConfig;
 }
 
 // ---- Websocket protocol ----------------------------------------------------
@@ -109,7 +124,9 @@ export type ServerMessage =
   | { type: "state"; state: AppState }
   | { type: "installed"; installed: InstalledOverlay[] }
   | { type: "variables"; variables: Variables }
-  | { type: "integration"; integration: IntegrationStatus };
+  | { type: "integration"; integration: IntegrationStatus }
+  // One-shot "play now" pulse for a specific overlay instance (e.g. gif alerts).
+  | { type: "pulse"; instanceId: string };
 
 /** Messages clients (control panel) send to the server. */
 export type ClientMessage =
@@ -126,4 +143,10 @@ export type ClientMessage =
   | { type: "setValue"; instanceId: string; fieldId: string; value: FieldValue }
   | { type: "adjustValue"; instanceId: string; fieldId: string; delta: number }
   // Bind a field to a live variable (null = back to manual).
-  | { type: "setBinding"; instanceId: string; fieldId: string; variableKey: string | null };
+  | { type: "setBinding"; instanceId: string; fieldId: string; variableKey: string | null }
+  // Change the output/canvas resolution (overlays rescale proportionally).
+  | { type: "setCanvas"; width: number; height: number }
+  // Enable/disable or reconfigure the Streamer.bot pull connection.
+  | { type: "setStreamerbot"; enabled?: boolean; host?: string; port?: number }
+  // Manually trigger an overlay instance to play (e.g. the gif alert Play button).
+  | { type: "play"; instanceId: string };

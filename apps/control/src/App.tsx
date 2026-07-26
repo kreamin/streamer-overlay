@@ -4,10 +4,12 @@ import { OverlayLibrary } from "./components/OverlayLibrary";
 import { InstanceList } from "./components/InstanceList";
 import { FieldControls } from "./components/FieldControls";
 import { Canvas } from "./components/Canvas";
+import { Settings } from "./components/Settings";
 
 export function App() {
   const { state, installed, variables, integration, connected, send } = useControlStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   if (!state) {
     return (
@@ -31,17 +33,27 @@ export function App() {
         <h1 className="text-sm font-semibold">Stream Overlay · Control Panel</h1>
         <span
           className={`ml-auto flex items-center gap-1.5 text-xs ${
-            integration.streamerbotConnected ? "text-emerald-400" : "text-white/40"
+            integration.streamerbot.connected
+              ? "text-emerald-400"
+              : integration.streamerbot.enabled
+                ? "text-amber-400"
+                : "text-white/40"
           }`}
           title={
-            integration.streamerbotConnected
-              ? "Streamer.bot is pushing live data"
-              : "No Streamer.bot client connected to ws://127.0.0.1:4747/ingest"
+            integration.streamerbot.connected
+              ? `Streamer.bot connected — ${integration.streamerbot.globalCount} globals`
+              : integration.streamerbot.enabled
+                ? "Streamer.bot enabled — connecting…"
+                : "Streamer.bot integration off (enable it in Settings)"
           }
         >
           <span
             className={`size-2 rounded-full ${
-              integration.streamerbotConnected ? "bg-emerald-400" : "bg-white/20"
+              integration.streamerbot.connected
+                ? "bg-emerald-400"
+                : integration.streamerbot.enabled
+                  ? "bg-amber-400"
+                  : "bg-white/20"
             }`}
           />
           Streamer.bot
@@ -56,6 +68,14 @@ export function App() {
           />
           {connected ? "Connected" : "Reconnecting…"}
         </span>
+        <button
+          onClick={() => setShowSettings(true)}
+          className="rounded-md px-2 py-1 text-white/50 hover:bg-white/10 hover:text-white"
+          title="Settings"
+          aria-label="Settings"
+        >
+          ⚙
+        </button>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -71,8 +91,8 @@ export function App() {
           />
         </aside>
 
-        {/* Center: canvas */}
-        <main className="flex min-w-0 flex-1 items-center justify-center overflow-auto p-6">
+        {/* Center: canvas (fills the panel; Canvas scales itself to fit) */}
+        <main className="flex min-w-0 flex-1 overflow-hidden">
           <Canvas
             state={state}
             installed={installed}
@@ -104,6 +124,15 @@ export function App() {
           )}
         </aside>
       </div>
+
+      {showSettings && (
+        <Settings
+          state={state}
+          integration={integration}
+          send={send}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }

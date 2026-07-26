@@ -12,6 +12,7 @@ export const PROJECT_ROOT = path.resolve(here, "..", "..", "..");
 export const OVERLAYS_DIR = path.join(PROJECT_ROOT, "overlays");
 export const DATA_DIR = path.join(PROJECT_ROOT, "data");
 export const STATE_FILE = path.join(DATA_DIR, "state.json");
+export const MEDIA_DIR = path.join(PROJECT_ROOT, "media");
 
 // Static assets shipped with the server (e.g. the overlay runtime script).
 export const PUBLIC_DIR = path.join(here, "..", "public");

@@ -2,7 +2,7 @@ import { useOverlayStore } from "./useOverlayStore";
 import { OverlayFrame } from "./OverlayFrame";
 
 export function App() {
-  const { state, installed } = useOverlayStore();
+  const { state, installed, pulses } = useOverlayStore();
   if (!state) return null;
 
   const byId = new Map(installed.map((o) => [o.manifest.id, o]));
@@ -19,6 +19,7 @@ export function App() {
               key={instance.instanceId}
               instance={instance}
               entryUrl={overlay.entryUrl}
+              pulse={pulses[instance.instanceId] ?? 0}
             />
           );
         })}

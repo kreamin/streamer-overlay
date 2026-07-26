@@ -7,8 +7,15 @@ import type {
   OverlayInstance,
   OverlayPosition,
   OverlaySize,
+  StreamerbotConfig,
   Variables,
 } from "@stream-overlay/shared";
+
+const DEFAULT_STREAMERBOT: StreamerbotConfig = {
+  enabled: false,
+  host: "127.0.0.1",
+  port: 8080,
+};
 
 /**
  * Owns the single source-of-truth AppState and persists it to a JSON file.
@@ -32,9 +39,13 @@ export class StateStore {
       const parsed = JSON.parse(raw) as AppState;
       if (!parsed.canvas) parsed.canvas = { ...CANVAS };
       if (!Array.isArray(parsed.instances)) parsed.instances = [];
+      if (!parsed.streamerbot) parsed.streamerbot = { ...DEFAULT_STREAMERBOT };
       return new StateStore(parsed, dataFile);
     } catch {
-      return new StateStore({ canvas: { ...CANVAS }, instances: [] }, dataFile);
+      return new StateStore(
+        { canvas: { ...CANVAS }, instances: [], streamerbot: { ...DEFAULT_STREAMERBOT } },
+        dataFile,
+      );
     }
   }
 
@@ -120,6 +131,50 @@ export class StateStore {
     }
     if (changed) this.touched();
     return changed;
+  }
+
+  /**
+   * Change the canvas (output) resolution. Existing overlays are rescaled
+   * proportionally so the layout stays visually the same at the new size.
+   */
+  setCanvas(width: number, height: number): void {
+    const clamp = (n: number) => Math.min(7680, Math.max(320, Math.round(n)));
+    const w = clamp(width);
+    const h = clamp(height);
+    const old = this.state.canvas;
+    if (old.width === w && old.height === h) return;
+    const rx = w / old.width;
+    const ry = h / old.height;
+    this.state.canvas = { width: w, height: h };
+    for (const inst of this.state.instances) {
+      inst.position = {
+        x: Math.round(inst.position.x * rx),
+        y: Math.round(inst.position.y * ry),
+      };
+      inst.size = {
+        width: Math.round(inst.size.width * rx),
+        height: Math.round(inst.size.height * ry),
+      };
+    }
+    this.touched();
+  }
+
+  /** Update the Streamer.bot connection config; returns the resolved config. */
+  setStreamerbot(patch: {
+    enabled?: boolean;
+    host?: string;
+    port?: number;
+  }): StreamerbotConfig {
+    const cur = this.state.streamerbot;
+    const port = patch.port ?? cur.port;
+    const next: StreamerbotConfig = {
+      enabled: patch.enabled ?? cur.enabled,
+      host: (patch.host ?? cur.host).trim() || "127.0.0.1",
+      port: Math.min(65535, Math.max(1, Math.round(port))),
+    };
+    this.state.streamerbot = next;
+    this.touched();
+    return next;
   }
 
   private find(instanceId: string): OverlayInstance | undefined {

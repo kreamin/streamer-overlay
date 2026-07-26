@@ -11,6 +11,10 @@ export class VariableStore {
     this.vars.set(key, value);
   }
 
+  setMany(vars: Variables): void {
+    for (const [key, value] of Object.entries(vars)) this.vars.set(key, value);
+  }
+
   get(key: string): FieldValue | undefined {
     return this.vars.get(key);
   }

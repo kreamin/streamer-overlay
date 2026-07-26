@@ -3,6 +3,7 @@
 // startServer() itself with paths from Electron instead.
 import {
   CONTROL_DIST,
+  MEDIA_DIR,
   OVERLAY_DIST,
   OVERLAYS_DIR,
   PORT,
@@ -18,4 +19,5 @@ await startServer({
   publicDir: PUBLIC_DIR,
   overlayDist: OVERLAY_DIST,
   controlDist: CONTROL_DIST,
+  mediaDir: MEDIA_DIR,
 });

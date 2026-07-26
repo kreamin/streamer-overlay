@@ -18,6 +18,7 @@ function resolvePaths() {
     return {
       overlaysDir: path.join(userData, "overlays"),
       dataFile: path.join(userData, "data", "state.json"),
+      mediaDir: path.join(userData, "media"),
       publicDir: path.join(res, "public"),
       overlayDist: path.join(res, "overlay"),
       controlDist: path.join(res, "control"),
@@ -29,6 +30,7 @@ function resolvePaths() {
   return {
     overlaysDir: path.join(root, "overlays"),
     dataFile: path.join(root, "data", "state.json"),
+    mediaDir: path.join(root, "media"),
     publicDir: path.join(root, "packages", "server", "public"),
     overlayDist: path.join(root, "apps", "overlay", "dist"),
     controlDist: path.join(root, "apps", "control", "dist"),
@@ -73,6 +75,7 @@ function createWindow() {
     width: 1280,
     height: 820,
     title: "kreamin's Streamin Overlay",
+    icon: path.join(__dirname, "..", "icon.ico"), // dev; packaged uses the exe icon
     backgroundColor: "#0b0e14",
     autoHideMenuBar: true,
   });
@@ -139,6 +142,7 @@ async function boot() {
       publicDir: paths.publicDir,
       overlayDist: paths.overlayDist,
       controlDist: paths.controlDist,
+      mediaDir: paths.mediaDir,
     });
   }
 

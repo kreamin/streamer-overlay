@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type {
   ClientMessage,
   FieldValue,
@@ -78,6 +79,7 @@ export function FieldControls({
                 variableKey,
               })
             }
+            onPlay={() => send({ type: "play", instanceId: instance.instanceId })}
           />
         ))}
       </div>
@@ -93,6 +95,7 @@ function Field({
   onSet,
   onAdjust,
   onBind,
+  onPlay,
 }: {
   field: OverlayFieldDef;
   value: FieldValue | undefined;
@@ -101,11 +104,12 @@ function Field({
   onSet: (value: FieldValue) => void;
   onAdjust: (delta: number) => void;
   onBind: (variableKey: string | null) => void;
+  onPlay: () => void;
 }) {
   const step = field.step ?? 1;
   const variableKeys = Object.keys(variables);
-  // Only show the source picker if there's something to bind to (or already bound).
-  const showSource = variableKeys.length > 0 || boundKey;
+  // Images aren't bindable; everything else can pick a live source.
+  const showSource = field.type !== "image" && (variableKeys.length > 0 || Boolean(boundKey));
 
   return (
     <label className="block">
@@ -116,9 +120,9 @@ function Field({
             value={boundKey ?? ""}
             onChange={(e) => onBind(e.target.value || null)}
             className="max-w-[55%] truncate rounded bg-black/40 px-1.5 py-0.5 text-xs text-white/70 ring-1 ring-white/10"
-            title="Where this value comes from"
+            title={field.type === "trigger" ? "Fire when this variable changes" : "Where this value comes from"}
           >
-            <option value="">Manual</option>
+            <option value="">{field.type === "trigger" ? "Manual only" : "Manual"}</option>
             {variableKeys.map((k) => (
               <option key={k} value={k}>
                 {k}
@@ -131,7 +135,23 @@ function Field({
         )}
       </div>
 
-      {boundKey ? (
+      {field.type === "image" ? (
+        <ImageField value={value} onSet={onSet} />
+      ) : field.type === "trigger" ? (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onPlay}
+            className="flex-1 rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400"
+          >
+            ▶ Play now
+          </button>
+          {boundKey && (
+            <span className="text-xs text-indigo-300" title={`Also fires when ${boundKey} changes`}>
+              🔗 {boundKey}
+            </span>
+          )}
+        </div>
+      ) : boundKey ? (
         <div className="flex items-center gap-2 rounded-md bg-indigo-500/10 px-3 py-2 text-sm ring-1 ring-indigo-400/30">
           <span className="text-indigo-300">🔗 Live</span>
           <span className="ml-auto tabular-nums text-white/80">
@@ -193,5 +213,60 @@ function Field({
         />
       )}
     </label>
+  );
+}
+
+/** Upload an image/gif; stores the returned /media URL as the field value. */
+function ImageField({
+  value,
+  onSet,
+}: {
+  value: FieldValue | undefined;
+  onSet: (value: FieldValue) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const url = typeof value === "string" ? value : "";
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const resp = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, dataUrl }),
+      });
+      const json = (await resp.json()) as { url?: string };
+      if (json.url) onSet(json.url);
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {url && (
+        <img
+          src={url}
+          alt=""
+          className="max-h-24 rounded-md bg-black/40 object-contain ring-1 ring-white/10"
+        />
+      )}
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => onFile(e.target.files?.[0])}
+        className="block w-full text-xs text-white/60 file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-white/80 hover:file:bg-white/20"
+      />
+      {busy && <p className="text-xs text-white/40">Uploading…</p>}
+    </div>
   );
 }

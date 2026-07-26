@@ -13,6 +13,8 @@ import type {
 export function useOverlayStore() {
   const [state, setState] = useState<AppState | null>(null);
   const [installed, setInstalled] = useState<InstalledOverlay[]>([]);
+  // A per-instance counter that increments each time a "play now" pulse arrives.
+  const [pulses, setPulses] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -30,6 +32,8 @@ export function useOverlayStore() {
           setState(msg.state);
         } else if (msg.type === "installed") {
           setInstalled(msg.installed);
+        } else if (msg.type === "pulse") {
+          setPulses((p) => ({ ...p, [msg.instanceId]: (p[msg.instanceId] ?? 0) + 1 }));
         }
       };
       socket.onclose = () => {
@@ -45,5 +49,5 @@ export function useOverlayStore() {
     };
   }, []);
 
-  return { state, installed };
+  return { state, installed, pulses };
 }

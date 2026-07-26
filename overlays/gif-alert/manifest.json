@@ -1,0 +1,14 @@
+{
+  "id": "gif-alert",
+  "name": "GIF Alert",
+  "version": "1.0.0",
+  "author": "Noah",
+  "description": "Plays an uploaded gif/image when triggered — e.g. a fire gif over your webcam on a chat command.",
+  "defaultSize": { "width": 480, "height": 360 },
+  "fields": [
+    { "id": "image", "label": "Image / GIF", "type": "image", "default": "" },
+    { "id": "duration", "label": "Duration (seconds)", "type": "number", "default": 3, "step": 1, "min": 1, "max": 60 },
+    { "id": "loop", "label": "Loop permanently", "type": "boolean", "default": false },
+    { "id": "trigger", "label": "Trigger", "type": "trigger", "default": 0 }
+  ]
+}

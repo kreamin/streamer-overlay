@@ -26,7 +26,13 @@
 
   window.addEventListener("message", function (event) {
     var msg = event.data;
-    if (msg && msg.type === "overlay:data") apply(msg.values);
+    if (!msg) return;
+    if (msg.type === "overlay:data") apply(msg.values);
+    // A one-shot "play now" pulse (e.g. a gif alert firing). Advanced overlays
+    // listen for the "overlaypulse" window event.
+    if (msg.type === "overlay:pulse") {
+      window.dispatchEvent(new CustomEvent("overlaypulse"));
+    }
   });
 
   // Announce readiness so the host sends current values immediately.

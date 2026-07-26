@@ -43,7 +43,8 @@
       { "from": "../../overlays", "to": "overlays-default" }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "icon.ico"
     },
     "nsis": {
       "oneClick": false,

@@ -12,11 +12,15 @@ import type { OverlayInstance } from "@stream-overlay/shared";
 export function OverlayFrame({
   instance,
   entryUrl,
+  pulse,
 }: {
   instance: OverlayInstance;
   entryUrl: string;
+  /** Increments each time this instance should "play now" (gif alerts). */
+  pulse: number;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
+  const seenPulse = useRef(pulse);
 
   const post = useCallback(() => {
     ref.current?.contentWindow?.postMessage(
@@ -29,6 +33,13 @@ export function OverlayFrame({
   useEffect(() => {
     post();
   }, [post]);
+
+  // Forward a "play now" pulse into the iframe (skip the initial mount value).
+  useEffect(() => {
+    if (pulse === seenPulse.current) return;
+    seenPulse.current = pulse;
+    ref.current?.contentWindow?.postMessage({ type: "overlay:pulse" }, "*");
+  }, [pulse]);
 
   // The runtime tells us when it's ready / has applied values, for the initial
   // load race and as a dev sanity check.
