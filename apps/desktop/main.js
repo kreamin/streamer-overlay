@@ -75,7 +75,9 @@ function createWindow() {
     width: 1280,
     height: 820,
     title: "kreamin's Streamin Overlay",
-    icon: path.join(__dirname, "..", "icon.ico"), // dev; packaged uses the exe icon
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, "icon.ico")
+      : path.join(__dirname, "..", "icon.ico"),
     backgroundColor: "#0b0e14",
     autoHideMenuBar: true,
   });

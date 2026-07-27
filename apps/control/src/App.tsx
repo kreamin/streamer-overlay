@@ -30,7 +30,7 @@ export function App() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-4 border-b border-white/10 px-5 py-3">
-        <h1 className="text-sm font-semibold">Stream Overlay · Control Panel</h1>
+        <h1 className="text-sm font-semibold">Control Panel</h1>
         <span
           className={`ml-auto flex items-center gap-1.5 text-xs ${
             integration.streamerbot.connected

@@ -1,7 +1,7 @@
 {
   "name": "@stream-overlay/desktop",
   "productName": "kreamin's Streamin Overlay",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "kreamin's Streamin Overlay",
   "author": "Noah",
@@ -40,7 +40,8 @@
       { "from": "../overlay/dist", "to": "overlay" },
       { "from": "../control/dist", "to": "control" },
       { "from": "../../packages/server/public", "to": "public" },
-      { "from": "../../overlays", "to": "overlays-default" }
+      { "from": "../../overlays", "to": "overlays-default" },
+      { "from": "icon.ico", "to": "icon.ico" }
     ],
     "win": {
       "target": "nsis",
