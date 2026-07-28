@@ -1,3 +1,4 @@
+import { activeScene } from "@stream-overlay/shared";
 import type {
   AppState,
   ClientMessage,
@@ -21,16 +22,18 @@ export function InstanceList({
   const nameOf = (overlayId: string) =>
     installed.find((o) => o.manifest.id === overlayId)?.manifest.name ?? overlayId;
 
+  const instances = activeScene(state).instances;
+
   return (
     <div>
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/40">
         On canvas
       </h2>
-      {state.instances.length === 0 ? (
+      {instances.length === 0 ? (
         <p className="text-sm text-white/40">Nothing added yet.</p>
       ) : (
         <ul className="space-y-1.5">
-          {state.instances.map((inst) => {
+          {instances.map((inst) => {
             const selected = inst.instanceId === selectedId;
             return (
               <li

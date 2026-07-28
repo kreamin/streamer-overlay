@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
+import { activeScene } from "@stream-overlay/shared";
 import type {
   AppState,
   ClientMessage,
@@ -73,7 +74,7 @@ export function Canvas({
           className="absolute left-0 top-0"
           style={{ width, height, transform: `scale(${scale})`, transformOrigin: "top left" }}
         >
-          {state.instances.map((inst) => {
+          {activeScene(state).instances.map((inst) => {
             const selected = inst.instanceId === selectedId;
             return (
               <Rnd

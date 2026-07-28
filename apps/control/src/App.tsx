@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { activeScene } from "@stream-overlay/shared";
 import { useControlStore } from "./useControlStore";
 import { OverlayLibrary } from "./components/OverlayLibrary";
 import { InstanceList } from "./components/InstanceList";
 import { FieldControls } from "./components/FieldControls";
 import { Canvas } from "./components/Canvas";
+import { SceneBar } from "./components/SceneBar";
 import { Settings } from "./components/Settings";
 
 export function App() {
@@ -19,13 +21,14 @@ export function App() {
     );
   }
 
-  const selected = state.instances.find((i) => i.instanceId === selectedId) ?? null;
+  const instances = activeScene(state).instances;
+  const selected = instances.find((i) => i.instanceId === selectedId) ?? null;
   const selectedOverlay = selected
     ? (installed.find((o) => o.manifest.id === selected.overlayId) ?? null)
     : null;
 
-  const maxZ = state.instances.reduce((m, i) => Math.max(m, i.z), 0);
-  const minZ = state.instances.reduce((m, i) => Math.min(m, i.z), 0);
+  const maxZ = instances.reduce((m, i) => Math.max(m, i.z), 0);
+  const minZ = instances.reduce((m, i) => Math.min(m, i.z), 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -60,6 +63,33 @@ export function App() {
         </span>
         <span
           className={`flex items-center gap-1.5 text-xs ${
+            integration.obs.connected
+              ? "text-emerald-400"
+              : integration.obs.enabled
+                ? "text-amber-400"
+                : "text-white/40"
+          }`}
+          title={
+            integration.obs.connected
+              ? `OBS connected — scene: ${integration.obs.currentScene ?? "?"}`
+              : integration.obs.enabled
+                ? `OBS enabled — connecting…${integration.obs.error ? ` (${integration.obs.error})` : ""}`
+                : "OBS integration off (enable it in Settings)"
+          }
+        >
+          <span
+            className={`size-2 rounded-full ${
+              integration.obs.connected
+                ? "bg-emerald-400"
+                : integration.obs.enabled
+                  ? "bg-amber-400"
+                  : "bg-white/20"
+            }`}
+          />
+          OBS
+        </span>
+        <span
+          className={`flex items-center gap-1.5 text-xs ${
             connected ? "text-emerald-400" : "text-amber-400"
           }`}
         >
@@ -77,6 +107,8 @@ export function App() {
           ⚙
         </button>
       </header>
+
+      <SceneBar state={state} obsScenes={integration.obs.scenes} send={send} />
 
       <div className="flex min-h-0 flex-1">
         {/* Left: library + active instances */}

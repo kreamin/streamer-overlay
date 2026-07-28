@@ -78,11 +78,33 @@ export interface OverlayInstance {
 /** Live variables pushed in by integrations (key -> value). */
 export type Variables = Record<string, FieldValue>;
 
+/**
+ * A named collection of placed overlays. Each scene owns its own instances, so
+ * switching scenes swaps which overlays render (mirrors OBS scenes). The output
+ * resolution (canvas) is shared across all scenes.
+ */
+export interface Scene {
+  id: string;
+  name: string;
+  instances: OverlayInstance[];
+  /** OBS scene name this app-scene follows (set in v0.3.0 Slice 2). */
+  obsSceneName?: string;
+}
+
 /** Configuration for the Streamer.bot pull connection (persisted in AppState). */
 export interface StreamerbotConfig {
   enabled: boolean;
   host: string;
   port: number;
+}
+
+/** Configuration for the OBS (obs-websocket v5) connection (persisted in AppState). */
+export interface ObsConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  /** obs-websocket server password (blank if auth is disabled in OBS). */
+  password: string;
 }
 
 /** Runtime status of external integrations. */
@@ -93,6 +115,15 @@ export interface IntegrationStatus {
     error?: string;
     /** How many Streamer.bot globals are currently available as variables. */
     globalCount: number;
+  };
+  obs: {
+    enabled: boolean;
+    connected: boolean;
+    error?: string;
+    /** The OBS program scene currently live (for the UI). */
+    currentScene?: string;
+    /** All OBS scene names, for the per-scene link picker. */
+    scenes: string[];
   };
   /** Number of push clients connected to the /ingest endpoint (advanced). */
   ingestClients: number;
@@ -106,8 +137,17 @@ export interface CanvasConfig {
 /** The full shared state the server owns and persists. */
 export interface AppState {
   canvas: CanvasConfig;
-  instances: OverlayInstance[];
+  /** All scenes; each owns its overlays. Always at least one. */
+  scenes: Scene[];
+  /** The scene currently rendered (and edited in the control panel). */
+  currentSceneId: string;
   streamerbot: StreamerbotConfig;
+  obs: ObsConfig;
+}
+
+/** The scene that's currently live (rendered + edited). Falls back to the first. */
+export function activeScene(state: AppState): Scene {
+  return state.scenes.find((s) => s.id === state.currentSceneId) ?? state.scenes[0];
 }
 
 // ---- Websocket protocol ----------------------------------------------------
@@ -130,6 +170,11 @@ export type ServerMessage =
 
 /** Messages clients (control panel) send to the server. */
 export type ClientMessage =
+  // Scene management (instance ops below act on the current scene).
+  | { type: "addScene"; name?: string }
+  | { type: "removeScene"; sceneId: string }
+  | { type: "renameScene"; sceneId: string; name: string }
+  | { type: "setCurrentScene"; sceneId: string }
   | { type: "addInstance"; overlayId: string }
   | { type: "removeInstance"; instanceId: string }
   | { type: "setActive"; instanceId: string; active: boolean }
@@ -148,5 +193,9 @@ export type ClientMessage =
   | { type: "setCanvas"; width: number; height: number }
   // Enable/disable or reconfigure the Streamer.bot pull connection.
   | { type: "setStreamerbot"; enabled?: boolean; host?: string; port?: number }
+  // Enable/disable or reconfigure the OBS (obs-websocket) connection.
+  | { type: "setObs"; enabled?: boolean; host?: string; port?: number; password?: string }
+  // Link an app scene to an OBS scene name (null = unlink).
+  | { type: "setSceneObsLink"; sceneId: string; obsSceneName: string | null }
   // Manually trigger an overlay instance to play (e.g. the gif alert Play button).
   | { type: "play"; instanceId: string };

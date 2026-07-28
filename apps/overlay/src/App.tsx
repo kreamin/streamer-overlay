@@ -1,3 +1,4 @@
+import { activeScene } from "@stream-overlay/shared";
 import { useOverlayStore } from "./useOverlayStore";
 import { OverlayFrame } from "./OverlayFrame";
 
@@ -9,7 +10,7 @@ export function App() {
 
   return (
     <>
-      {state.instances
+      {activeScene(state).instances
         .filter((instance) => instance.active)
         .map((instance) => {
           const overlay = byId.get(instance.overlayId);

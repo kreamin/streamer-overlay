@@ -8,6 +8,7 @@ import { StateStore } from "./state.js";
 import { OverlayRegistry } from "./registry.js";
 import { VariableStore } from "./variables.js";
 import { StreamerbotConnector } from "./streamerbot.js";
+import { ObsConnector } from "./obs.js";
 import type {
   ClientMessage,
   FieldValue,
@@ -97,6 +98,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
 
   const integration = (): IntegrationStatus => ({
     streamerbot: streamerbot.getStatus(),
+    obs: obs.getStatus(),
     ingestClients: ingestSockets.size,
   });
 
@@ -118,6 +120,17 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     () => broadcast({ type: "integration", integration: integration() }),
   );
   streamerbot.configure(store.get().streamerbot);
+
+  // OBS connector: watches the program scene and drives the app's current scene.
+  const obs = new ObsConnector(
+    (obsSceneName) => {
+      if (store.setCurrentSceneByObsName(obsSceneName)) {
+        broadcast({ type: "state", state: store.get() });
+      }
+    },
+    () => broadcast({ type: "integration", integration: integration() }),
+  );
+  obs.configure(store.get().obs);
 
   registry.onChange((installed) => broadcast({ type: "installed", installed }));
 
@@ -180,6 +193,13 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         broadcast({ type: "integration", integration: integration() });
         return;
       }
+      if (message.type === "setObs") {
+        const cfg = store.setObs(message);
+        obs.configure(cfg);
+        broadcast({ type: "state", state: store.get() });
+        broadcast({ type: "integration", integration: integration() });
+        return;
+      }
       if (message.type === "play") {
         broadcast({ type: "pulse", instanceId: message.instanceId });
         return;
@@ -196,6 +216,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     close: () =>
       new Promise<void>((resolve) => {
         streamerbot.stop();
+        obs.stop();
         wss.close();
         httpServer.close(() => resolve());
       }),
@@ -239,6 +260,21 @@ function handle(
   variables: VariableStore,
 ): void {
   switch (message.type) {
+    case "addScene":
+      store.addScene(message.name);
+      break;
+    case "removeScene":
+      store.removeScene(message.sceneId);
+      break;
+    case "renameScene":
+      store.renameScene(message.sceneId, message.name);
+      break;
+    case "setCurrentScene":
+      store.setCurrentScene(message.sceneId);
+      break;
+    case "setSceneObsLink":
+      store.setSceneObsLink(message.sceneId, message.obsSceneName);
+      break;
     case "addInstance": {
       const overlay = registry.find(message.overlayId);
       if (overlay) store.addInstance(makeInstance(overlay, store));

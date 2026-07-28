@@ -4,9 +4,11 @@ import { CANVAS } from "./constants.js";
 import type {
   AppState,
   FieldValue,
+  ObsConfig,
   OverlayInstance,
   OverlayPosition,
   OverlaySize,
+  Scene,
   StreamerbotConfig,
   Variables,
 } from "@stream-overlay/shared";
@@ -16,6 +18,39 @@ const DEFAULT_STREAMERBOT: StreamerbotConfig = {
   host: "127.0.0.1",
   port: 8080,
 };
+
+const DEFAULT_OBS: ObsConfig = {
+  enabled: false,
+  host: "127.0.0.1",
+  port: 4455,
+  password: "",
+};
+
+function makeScene(name: string, instances: OverlayInstance[] = []): Scene {
+  return { id: crypto.randomUUID(), name, instances };
+}
+
+/**
+ * Bring any older/partial persisted state up to the current shape. Notably
+ * migrates a pre-v0.3.0 flat `instances[]` into a single default scene.
+ */
+function normalize(parsed: Partial<AppState> & { instances?: OverlayInstance[] }): AppState {
+  const canvas = parsed.canvas ?? { ...CANVAS };
+  const streamerbot = parsed.streamerbot ?? { ...DEFAULT_STREAMERBOT };
+  const obs = parsed.obs ? { ...DEFAULT_OBS, ...parsed.obs } : { ...DEFAULT_OBS };
+
+  let scenes: Scene[] = Array.isArray(parsed.scenes) ? parsed.scenes : [];
+  if (scenes.length === 0) {
+    const legacy = Array.isArray(parsed.instances) ? parsed.instances : [];
+    scenes = [makeScene("Scene 1", legacy)];
+  }
+  for (const s of scenes) if (!Array.isArray(s.instances)) s.instances = [];
+
+  let currentSceneId = parsed.currentSceneId ?? "";
+  if (!scenes.some((s) => s.id === currentSceneId)) currentSceneId = scenes[0].id;
+
+  return { canvas, scenes, currentSceneId, streamerbot, obs };
+}
 
 /**
  * Owns the single source-of-truth AppState and persists it to a JSON file.
@@ -36,16 +71,9 @@ export class StateStore {
     await fs.mkdir(path.dirname(dataFile), { recursive: true });
     try {
       const raw = await fs.readFile(dataFile, "utf8");
-      const parsed = JSON.parse(raw) as AppState;
-      if (!parsed.canvas) parsed.canvas = { ...CANVAS };
-      if (!Array.isArray(parsed.instances)) parsed.instances = [];
-      if (!parsed.streamerbot) parsed.streamerbot = { ...DEFAULT_STREAMERBOT };
-      return new StateStore(parsed, dataFile);
+      return new StateStore(normalize(JSON.parse(raw)), dataFile);
     } catch {
-      return new StateStore(
-        { canvas: { ...CANVAS }, instances: [], streamerbot: { ...DEFAULT_STREAMERBOT } },
-        dataFile,
-      );
+      return new StateStore(normalize({}), dataFile);
     }
   }
 
@@ -53,19 +81,60 @@ export class StateStore {
     return this.state;
   }
 
+  // --- scenes -------------------------------------------------------------
+
+  /** The scene currently being rendered/edited (guaranteed to exist). */
+  private current(): Scene {
+    return (
+      this.state.scenes.find((s) => s.id === this.state.currentSceneId) ??
+      this.state.scenes[0]
+    );
+  }
+
+  addScene(name?: string): void {
+    const scene = makeScene((name ?? "").trim() || `Scene ${this.state.scenes.length + 1}`);
+    this.state.scenes.push(scene);
+    this.state.currentSceneId = scene.id; // jump to the new scene
+    this.touched();
+  }
+
+  removeScene(sceneId: string): void {
+    if (this.state.scenes.length <= 1) return; // always keep at least one
+    this.state.scenes = this.state.scenes.filter((s) => s.id !== sceneId);
+    if (!this.state.scenes.some((s) => s.id === this.state.currentSceneId)) {
+      this.state.currentSceneId = this.state.scenes[0].id;
+    }
+    this.touched();
+  }
+
+  renameScene(sceneId: string, name: string): void {
+    const scene = this.state.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    scene.name = name.trim() || scene.name;
+    this.touched();
+  }
+
+  setCurrentScene(sceneId: string): void {
+    if (!this.state.scenes.some((s) => s.id === sceneId)) return;
+    this.state.currentSceneId = sceneId;
+    this.touched();
+  }
+
+  // --- instances (added to / z-ordered within the current scene) ----------
+
   nextZ(): number {
-    return this.state.instances.reduce((max, i) => Math.max(max, i.z), 0) + 1;
+    return this.current().instances.reduce((max, i) => Math.max(max, i.z), 0) + 1;
   }
 
   addInstance(instance: OverlayInstance): void {
-    this.state.instances.push(instance);
+    this.current().instances.push(instance);
     this.touched();
   }
 
   removeInstance(instanceId: string): void {
-    this.state.instances = this.state.instances.filter(
-      (i) => i.instanceId !== instanceId,
-    );
+    for (const scene of this.state.scenes) {
+      scene.instances = scene.instances.filter((i) => i.instanceId !== instanceId);
+    }
     this.touched();
   }
 
@@ -115,17 +184,20 @@ export class StateStore {
   }
 
   /**
-   * Push current variable values into any fields bound to them.
+   * Push current variable values into any fields bound to them (across ALL
+   * scenes, so bindings stay live for scenes that aren't currently showing).
    * Returns true if any value actually changed (so callers can skip broadcasts).
    */
   applyBoundValues(variables: Variables): boolean {
     let changed = false;
-    for (const inst of this.state.instances) {
-      if (!inst.bindings) continue;
-      for (const [fieldId, key] of Object.entries(inst.bindings)) {
-        if (key in variables && inst.values[fieldId] !== variables[key]) {
-          inst.values[fieldId] = variables[key];
-          changed = true;
+    for (const scene of this.state.scenes) {
+      for (const inst of scene.instances) {
+        if (!inst.bindings) continue;
+        for (const [fieldId, key] of Object.entries(inst.bindings)) {
+          if (key in variables && inst.values[fieldId] !== variables[key]) {
+            inst.values[fieldId] = variables[key];
+            changed = true;
+          }
         }
       }
     }
@@ -134,8 +206,8 @@ export class StateStore {
   }
 
   /**
-   * Change the canvas (output) resolution. Existing overlays are rescaled
-   * proportionally so the layout stays visually the same at the new size.
+   * Change the canvas (output) resolution. Existing overlays in every scene are
+   * rescaled proportionally so layouts stay visually the same at the new size.
    */
   setCanvas(width: number, height: number): void {
     const clamp = (n: number) => Math.min(7680, Math.max(320, Math.round(n)));
@@ -146,15 +218,17 @@ export class StateStore {
     const rx = w / old.width;
     const ry = h / old.height;
     this.state.canvas = { width: w, height: h };
-    for (const inst of this.state.instances) {
-      inst.position = {
-        x: Math.round(inst.position.x * rx),
-        y: Math.round(inst.position.y * ry),
-      };
-      inst.size = {
-        width: Math.round(inst.size.width * rx),
-        height: Math.round(inst.size.height * ry),
-      };
+    for (const scene of this.state.scenes) {
+      for (const inst of scene.instances) {
+        inst.position = {
+          x: Math.round(inst.position.x * rx),
+          y: Math.round(inst.position.y * ry),
+        };
+        inst.size = {
+          width: Math.round(inst.size.width * rx),
+          height: Math.round(inst.size.height * ry),
+        };
+      }
     }
     this.touched();
   }
@@ -177,8 +251,55 @@ export class StateStore {
     return next;
   }
 
+  /** Update the OBS connection config; returns the resolved config. */
+  setObs(patch: {
+    enabled?: boolean;
+    host?: string;
+    port?: number;
+    password?: string;
+  }): ObsConfig {
+    const cur = this.state.obs;
+    const port = patch.port ?? cur.port;
+    const next: ObsConfig = {
+      enabled: patch.enabled ?? cur.enabled,
+      host: (patch.host ?? cur.host).trim() || "127.0.0.1",
+      port: Math.min(65535, Math.max(1, Math.round(port))),
+      password: patch.password ?? cur.password,
+    };
+    this.state.obs = next;
+    this.touched();
+    return next;
+  }
+
+  /** Link an app scene to an OBS scene name (null/"" clears the link). */
+  setSceneObsLink(sceneId: string, obsSceneName: string | null): void {
+    const scene = this.state.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    const name = (obsSceneName ?? "").trim();
+    if (name) scene.obsSceneName = name;
+    else delete scene.obsSceneName;
+    this.touched();
+  }
+
+  /**
+   * Switch to the app scene linked to the given OBS scene name (driven by OBS).
+   * Returns true if a linked scene was found and became current.
+   */
+  setCurrentSceneByObsName(obsSceneName: string): boolean {
+    const scene = this.state.scenes.find((s) => s.obsSceneName === obsSceneName);
+    if (!scene || scene.id === this.state.currentSceneId) return false;
+    this.state.currentSceneId = scene.id;
+    this.touched();
+    return true;
+  }
+
+  /** Find an instance by id across all scenes (ids are globally unique). */
   private find(instanceId: string): OverlayInstance | undefined {
-    return this.state.instances.find((i) => i.instanceId === instanceId);
+    for (const scene of this.state.scenes) {
+      const inst = scene.instances.find((i) => i.instanceId === instanceId);
+      if (inst) return inst;
+    }
+    return undefined;
   }
 
   private touched(): void {

@@ -28,6 +28,12 @@ export function Settings({
   const [host, setHost] = useState(sb.host);
   const [port, setPort] = useState(String(sb.port));
 
+  const obs = state.obs;
+  const obsStatus = integration.obs;
+  const [obsHost, setObsHost] = useState(obs.host);
+  const [obsPort, setObsPort] = useState(String(obs.port));
+  const [obsPassword, setObsPassword] = useState(obs.password);
+
   // Keep the custom inputs in sync if these change elsewhere.
   useEffect(() => {
     setW(String(width));
@@ -37,6 +43,11 @@ export function Settings({
     setHost(sb.host);
     setPort(String(sb.port));
   }, [sb.host, sb.port]);
+  useEffect(() => {
+    setObsHost(obs.host);
+    setObsPort(String(obs.port));
+    setObsPassword(obs.password);
+  }, [obs.host, obs.port, obs.password]);
 
   const apply = (nw: number, nh: number) => {
     if (Number.isFinite(nw) && Number.isFinite(nh) && nw > 0 && nh > 0) {
@@ -185,6 +196,92 @@ export function Settings({
             </label>
             <button
               onClick={() => send({ type: "setStreamerbot", host, port: Number(port) })}
+              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20"
+            >
+              Apply
+            </button>
+          </div>
+        </section>
+
+        {/* OBS (obs-websocket) integration */}
+        <section className="mt-6">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
+            OBS
+          </h3>
+          <p className="mb-3 text-xs text-white/40">
+            Follows your OBS scene switches so linked app scenes activate automatically.
+            Enable OBS's WebSocket server (Tools → WebSocket Server Settings) and paste the
+            password here.
+          </p>
+
+          <label className="mb-3 flex cursor-pointer items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={obs.enabled}
+              onChange={(e) => send({ type: "setObs", enabled: e.target.checked })}
+              className="size-4 accent-indigo-500"
+            />
+            <span className="text-sm">Enable integration</span>
+          </label>
+
+          <div className="mb-3 flex items-center gap-2 text-xs">
+            <span
+              className={`size-2 rounded-full ${
+                obsStatus.connected
+                  ? "bg-emerald-400"
+                  : obsStatus.enabled
+                    ? "bg-amber-400"
+                    : "bg-white/20"
+              }`}
+            />
+            <span className="text-white/60">
+              {obsStatus.connected
+                ? `Connected — ${obsStatus.scenes.length} scene${obsStatus.scenes.length === 1 ? "" : "s"}${obsStatus.currentScene ? `, live: ${obsStatus.currentScene}` : ""}`
+                : obsStatus.enabled
+                  ? `Connecting to ${obs.host}:${obs.port}…${obsStatus.error ? ` (${obsStatus.error})` : ""}`
+                  : "Off"}
+            </span>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <label className="flex-1 text-xs text-white/60">
+              Host
+              <input
+                value={obsHost}
+                onChange={(e) => setObsHost(e.target.value)}
+                className="mt-1 w-full rounded-md bg-black/40 px-2 py-1.5 text-sm outline-none ring-1 ring-white/10 focus:ring-indigo-400"
+              />
+            </label>
+            <label className="w-20 text-xs text-white/60">
+              Port
+              <input
+                type="number"
+                value={obsPort}
+                onChange={(e) => setObsPort(e.target.value)}
+                className="mt-1 w-full rounded-md bg-black/40 px-2 py-1.5 text-sm outline-none ring-1 ring-white/10 focus:ring-indigo-400"
+              />
+            </label>
+          </div>
+          <div className="mt-2 flex items-end gap-2">
+            <label className="flex-1 text-xs text-white/60">
+              Password
+              <input
+                type="password"
+                value={obsPassword}
+                onChange={(e) => setObsPassword(e.target.value)}
+                placeholder="(from OBS WebSocket settings)"
+                className="mt-1 w-full rounded-md bg-black/40 px-2 py-1.5 text-sm outline-none ring-1 ring-white/10 focus:ring-indigo-400"
+              />
+            </label>
+            <button
+              onClick={() =>
+                send({
+                  type: "setObs",
+                  host: obsHost,
+                  port: Number(obsPort),
+                  password: obsPassword,
+                })
+              }
               className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20"
             >
               Apply
