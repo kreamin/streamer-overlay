@@ -1,13 +1,18 @@
 {
   "id": "subscriber-goal",
   "name": "Subscriber Goal",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Noah",
-  "description": "Shows current subscribers out of a goal, e.g. 42/100.",
+  "description": "Shows current subscribers out of a goal, e.g. 42/100, with an editable bottom label. Size and thickness of both the goal number and the label are adjustable.",
   "defaultSize": { "width": 340, "height": 96 },
   "fields": [
     { "id": "subs", "label": "Current Subs", "type": "number", "default": 0, "live": true, "step": 1, "min": 0 },
     { "id": "goalSubs", "label": "Goal", "type": "number", "default": 100, "step": 5, "min": 1 },
-    { "id": "color", "label": "Text Color", "type": "color", "default": "#ffffff" }
+    { "id": "color", "label": "Text Color", "type": "color", "default": "#ffffff" },
+    { "id": "countSize", "label": "Goal size (px)", "type": "number", "default": 44, "step": 2, "min": 8, "max": 240 },
+    { "id": "countWeight", "label": "Goal thickness", "type": "number", "default": 800, "step": 100, "min": 100, "max": 900 },
+    { "id": "labelText", "label": "Bottom text", "type": "text", "default": "subscribers" },
+    { "id": "labelSize", "label": "Bottom text size (px)", "type": "number", "default": 15, "step": 1, "min": 6, "max": 160 },
+    { "id": "labelWeight", "label": "Bottom text thickness", "type": "number", "default": 400, "step": 100, "min": 100, "max": 900 }
   ]
 }

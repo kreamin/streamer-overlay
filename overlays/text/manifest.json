@@ -1,0 +1,12 @@
+{
+  "id": "text",
+  "name": "Text",
+  "version": "1.0.0",
+  "author": "Noah",
+  "description": "A simple text overlay — type any text and pick a color. The font size auto-scales to fill the box, so just resize the element to size the text.",
+  "defaultSize": { "width": 400, "height": 120 },
+  "fields": [
+    { "id": "text", "label": "Text", "type": "text", "default": "Text" },
+    { "id": "color", "label": "Color", "type": "color", "default": "#ffffff" }
+  ]
+}
