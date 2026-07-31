@@ -171,6 +171,26 @@ function SceneEditModal({
           )}
         </section>
 
+        <section className="mb-6">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
+            Editing
+          </h3>
+          <label className="flex cursor-pointer items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={!!scene.liveDrag}
+              onChange={(e) =>
+                send({ type: "setSceneLiveDrag", sceneId: scene.id, liveDrag: e.target.checked })
+              }
+              className="size-4 accent-indigo-500"
+            />
+            <span className="text-sm">Live-track drags in OBS</span>
+          </label>
+          <p className="mt-1 text-[11px] text-white/30">
+            Update OBS continuously while you drag/resize, instead of only on release.
+          </p>
+        </section>
+
         {canDelete && (
           <section>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">

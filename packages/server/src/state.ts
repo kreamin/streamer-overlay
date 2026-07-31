@@ -120,6 +120,13 @@ export class StateStore {
     this.touched();
   }
 
+  setSceneLiveDrag(sceneId: string, liveDrag: boolean): void {
+    const scene = this.state.scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    scene.liveDrag = liveDrag;
+    this.touched();
+  }
+
   // --- instances (added to / z-ordered within the current scene) ----------
 
   nextZ(): number {

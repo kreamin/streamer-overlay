@@ -272,6 +272,9 @@ function handle(
     case "setCurrentScene":
       store.setCurrentScene(message.sceneId);
       break;
+    case "setSceneLiveDrag":
+      store.setSceneLiveDrag(message.sceneId, message.liveDrag);
+      break;
     case "setSceneObsLink":
       store.setSceneObsLink(message.sceneId, message.obsSceneName);
       break;

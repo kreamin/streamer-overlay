@@ -58,6 +58,17 @@ export function Canvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const scale = useFitScale(containerRef, width, height);
 
+  // Live-follow while dragging/resizing (per-scene opt-in), throttled so we
+  // don't flood the socket. Drag-stop/resize-stop still send the final layout.
+  const liveDrag = Boolean(activeScene(state).liveDrag);
+  const lastLive = useRef(0);
+  const sendLive = (msg: ClientMessage) => {
+    const now = Date.now();
+    if (now - lastLive.current < 50) return; // ~20 updates/sec max
+    lastLive.current = now;
+    send(msg);
+  };
+
   const nameOf = (overlayId: string) =>
     installed.find((o) => o.manifest.id === overlayId)?.manifest.name ?? overlayId;
 
@@ -84,12 +95,36 @@ export function Canvas({
                 size={{ width: inst.size.width, height: inst.size.height }}
                 position={{ x: inst.position.x, y: inst.position.y }}
                 onDragStart={() => onSelect(inst.instanceId)}
+                onDrag={
+                  liveDrag
+                    ? (_e, d) =>
+                        sendLive({
+                          type: "setLayout",
+                          instanceId: inst.instanceId,
+                          position: { x: Math.round(d.x), y: Math.round(d.y) },
+                        })
+                    : undefined
+                }
                 onDragStop={(_e, d) =>
                   send({
                     type: "setLayout",
                     instanceId: inst.instanceId,
                     position: { x: Math.round(d.x), y: Math.round(d.y) },
                   })
+                }
+                onResize={
+                  liveDrag
+                    ? (_e, _dir, ref, _delta, pos) =>
+                        sendLive({
+                          type: "setLayout",
+                          instanceId: inst.instanceId,
+                          size: {
+                            width: Math.round(parseFloat(ref.style.width)),
+                            height: Math.round(parseFloat(ref.style.height)),
+                          },
+                          position: { x: Math.round(pos.x), y: Math.round(pos.y) },
+                        })
+                    : undefined
                 }
                 onResizeStop={(_e, _dir, ref, _delta, pos) =>
                   send({

@@ -89,6 +89,8 @@ export interface Scene {
   instances: OverlayInstance[];
   /** OBS scene name this app-scene follows (set in v0.3.0 Slice 2). */
   obsSceneName?: string;
+  /** Stream layout to OBS continuously while dragging/resizing (vs only on release). */
+  liveDrag?: boolean;
 }
 
 /** Configuration for the Streamer.bot pull connection (persisted in AppState). */
@@ -175,6 +177,7 @@ export type ClientMessage =
   | { type: "removeScene"; sceneId: string }
   | { type: "renameScene"; sceneId: string; name: string }
   | { type: "setCurrentScene"; sceneId: string }
+  | { type: "setSceneLiveDrag"; sceneId: string; liveDrag: boolean }
   | { type: "addInstance"; overlayId: string }
   | { type: "removeInstance"; instanceId: string }
   | { type: "setActive"; instanceId: string; active: boolean }
