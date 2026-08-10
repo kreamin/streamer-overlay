@@ -5,7 +5,7 @@
 
 // ---- Overlay package format (manifest.json) -------------------------------
 
-export type FieldType = "number" | "text" | "boolean" | "color" | "image" | "trigger";
+export type FieldType = "number" | "text" | "boolean" | "color" | "image" | "audio" | "trigger";
 
 /** A single configurable field an overlay declares in its manifest. */
 export interface OverlayFieldDef {

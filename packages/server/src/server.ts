@@ -332,6 +332,13 @@ function extFor(mime: string, filename?: string): string {
     "image/webp": ".webp",
     "image/apng": ".apng",
     "image/svg+xml": ".svg",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/ogg": ".ogg",
+    "audio/webm": ".weba",
   };
   if (byMime[mime]) return byMime[mime];
   const ext = filename ? path.extname(filename) : "";
