@@ -87,11 +87,14 @@ export function Canvas({
         >
           {activeScene(state).instances.map((inst) => {
             const selected = inst.instanceId === selectedId;
+            const obsLocked = Boolean(inst.obsSource);
             return (
               <Rnd
                 key={inst.instanceId}
                 scale={scale}
                 bounds="parent"
+                disableDragging={obsLocked}
+                enableResizing={!obsLocked}
                 size={{ width: inst.size.width, height: inst.size.height }}
                 position={{ x: inst.position.x, y: inst.position.y }}
                 onDragStart={() => onSelect(inst.instanceId)}
@@ -144,12 +147,22 @@ export function Canvas({
                 className={`flex items-center justify-center border-2 text-center ${
                   selected
                     ? "border-indigo-400 bg-indigo-500/20"
-                    : "border-dashed border-white/30 bg-white/5"
+                    : obsLocked
+                      ? "border-solid border-amber-400/60 bg-amber-400/5"
+                      : "border-dashed border-white/30 bg-white/5"
                 } ${inst.active ? "" : "opacity-40"}`}
               >
                 <span className="pointer-events-none select-none px-2 text-2xl text-white/80">
                   {nameOf(inst.overlayId)}
                 </span>
+                {obsLocked && (
+                  <span
+                    className="pointer-events-none absolute left-1 top-1 rounded bg-amber-400/90 px-1 text-[10px] font-semibold text-black"
+                    title={`Locked to OBS source: ${inst.obsSource}`}
+                  >
+                    🔒 {inst.obsSource}
+                  </span>
+                )}
               </Rnd>
             );
           })}

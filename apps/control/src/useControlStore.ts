@@ -18,7 +18,7 @@ export function useControlStore() {
   const [variables, setVariables] = useState<Variables>({});
   const [integration, setIntegration] = useState<IntegrationStatus>({
     streamerbot: { enabled: false, connected: false, globalCount: 0 },
-    obs: { enabled: false, connected: false, scenes: [] },
+    obs: { enabled: false, connected: false, scenes: [], sources: [], sourcesByScene: {} },
     ingestClients: 0,
   });
   const [connected, setConnected] = useState(false);

@@ -8,7 +8,26 @@ export interface ObsStatus {
   error?: string;
   currentScene?: string;
   scenes: string[];
+  /** Deduped scene-item source names across all scenes (for unlinked scenes). */
+  sources: string[];
+  /** Scene-item source names per OBS scene (for scenes linked to an OBS scene). */
+  sourcesByScene: Record<string, string[]>;
 }
+
+/** A source's on-screen box, normalized 0..1 against the OBS base canvas. */
+export interface ObsBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// OBS scene-item alignment bit flags (OBS_ALIGN_*). Default item alignment is
+// 5 (top-left = LEFT|TOP). We use these to resolve positionX/Y → top-left.
+const ALIGN_LEFT = 1;
+const ALIGN_RIGHT = 2;
+const ALIGN_TOP = 4;
+const ALIGN_BOTTOM = 8;
 
 const RECONNECT_MS = 3000;
 const REQUEST_TIMEOUT_MS = 5000;
@@ -25,6 +44,10 @@ const OP_REQUEST_RESPONSE = 7;
 // categories. Includes Scenes (CurrentProgramSceneChanged etc.). Being explicit
 // avoids depending on the server's default subscription behavior.
 const EVENT_SUB_ALL = 2047;
+// SceneItemTransformChanged is a HIGH-VOLUME event (bit 19) and is NOT part of
+// `All` — it must be opted into explicitly, or a source's live move/resize never
+// reaches us (you'd only see it after a reconnect, when we re-read transforms).
+const EVENT_SUB_SCENE_ITEM_TRANSFORM = 1 << 19; // 524288
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -44,15 +67,49 @@ export class ObsConnector {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reqId = 0;
   private pending = new Map<string, (data: any) => void>();
-  private status: ObsStatus = { enabled: false, connected: false, scenes: [] };
+  private status: ObsStatus = {
+    enabled: false,
+    connected: false,
+    scenes: [],
+    sources: [],
+    sourcesByScene: {},
+  };
+
+  // OBS base (canvas) resolution — transforms are in these pixels.
+  private base = { width: 1920, height: 1080 };
+  // sceneName -> scene-item id -> source name (for reverse lookup on events).
+  private itemsByScene = new Map<string, Map<number, string>>();
+  // `${sceneName}|${sourceName}` -> normalized on-screen box.
+  private transforms = new Map<string, ObsBox>();
 
   constructor(
     private readonly onSceneChange: (obsSceneName: string) => void,
     private readonly onStatus: (status: ObsStatus) => void,
+    /** Fired when any tracked source transform (or the base canvas) changes. */
+    private readonly onTransforms: () => void = () => {},
   ) {}
 
   getStatus(): ObsStatus {
     return this.status;
+  }
+
+  /**
+   * The normalized (0..1) on-screen box for a source. If `preferScene` is given
+   * (the app scene is linked to an OBS scene), resolution is STRICT to that OBS
+   * scene — a same-named source in another scene can't leak in. Without a link,
+   * falls back to the current program scene, then any scene containing it.
+   * Returns null if the source isn't found there or has no valid transform.
+   */
+  getBox(preferScene: string | undefined, sourceName: string): ObsBox | null {
+    const at = (scene?: string) =>
+      scene ? (this.transforms.get(`${scene}|${sourceName}`) ?? null) : null;
+    if (preferScene) return at(preferScene); // linked scene: that scene only
+    const current = at(this.status.currentScene);
+    if (current) return current;
+    for (const key of this.transforms.keys()) {
+      if (key.endsWith(`|${sourceName}`)) return this.transforms.get(key)!;
+    }
+    return null;
   }
 
   /** Apply a new config; (re)connects or disconnects as needed. */
@@ -124,7 +181,10 @@ export class ObsConnector {
   }
 
   private identify(hello: any): void {
-    const d: any = { rpcVersion: 1, eventSubscriptions: EVENT_SUB_ALL };
+    const d: any = {
+      rpcVersion: 1,
+      eventSubscriptions: EVENT_SUB_ALL | EVENT_SUB_SCENE_ITEM_TRANSFORM,
+    };
     const auth = hello?.authentication;
     if (auth?.challenge && auth?.salt) {
       // base64( sha256( base64( sha256(password + salt) ) + challenge ) )
@@ -137,9 +197,13 @@ export class ObsConnector {
   private async onIdentified(): Promise<void> {
     this.status = { ...this.status, connected: true, error: undefined };
     await this.refreshScenes();
+    await this.refreshVideoSettings();
+    await this.refreshAllSceneItems();
     this.emitStatus();
     // Align immediately with whatever scene OBS is already on.
     if (this.status.currentScene) this.onSceneChange(this.status.currentScene);
+    // Push initial transforms so locked elements snap into place on connect.
+    this.onTransforms();
   }
 
   private onEvent(d: any): void {
@@ -157,7 +221,40 @@ export class ObsConnector {
       type === "SceneRemoved" ||
       type === "SceneNameChanged"
     ) {
-      void this.refreshScenes().then(() => this.emitStatus());
+      void this.refreshScenes()
+        .then(() => this.refreshAllSceneItems())
+        .then(() => {
+          this.emitStatus();
+          this.onTransforms();
+        });
+    } else if (type === "SceneItemTransformChanged") {
+      // Live move/resize of a source in OBS — update just that one box.
+      const sceneName = d?.eventData?.sceneName;
+      const itemId = Number(d?.eventData?.sceneItemId);
+      const t = d?.eventData?.sceneItemTransform;
+      const sourceName =
+        typeof sceneName === "string"
+          ? this.itemsByScene.get(sceneName)?.get(itemId)
+          : undefined;
+      if (typeof sceneName === "string" && sourceName && t) {
+        const box = this.boxFromTransform(t);
+        if (box) {
+          this.transforms.set(`${sceneName}|${sourceName}`, box);
+          this.onTransforms();
+        }
+      }
+    } else if (
+      type === "SceneItemCreated" ||
+      type === "SceneItemRemoved" ||
+      type === "SceneItemListReindexed"
+    ) {
+      const sceneName = d?.eventData?.sceneName;
+      if (typeof sceneName === "string") {
+        void this.refreshSceneItems(sceneName).then(() => {
+          this.emitStatus();
+          this.onTransforms();
+        });
+      }
     }
   }
 
@@ -182,6 +279,92 @@ export class ObsConnector {
       ...this.status,
       scenes,
       currentScene: data.currentProgramSceneName ?? this.status.currentScene,
+    };
+  }
+
+  /** Read the OBS base (canvas) resolution — transforms are in these pixels. */
+  private async refreshVideoSettings(): Promise<void> {
+    const resp = await this.request("GetVideoSettings");
+    const data = resp?.responseData;
+    const w = Number(data?.baseWidth);
+    const h = Number(data?.baseHeight);
+    if (isFinite(w) && w > 0 && isFinite(h) && h > 0) this.base = { width: w, height: h };
+  }
+
+  /** Refresh scene-item lists + transforms for every known scene. */
+  private async refreshAllSceneItems(): Promise<void> {
+    this.itemsByScene.clear();
+    this.transforms.clear();
+    for (const scene of this.status.scenes) await this.refreshSceneItems(scene);
+    this.recomputeSources();
+  }
+
+  /** Refresh one scene's item list + each item's transform. */
+  private async refreshSceneItems(sceneName: string): Promise<void> {
+    const resp = await this.request("GetSceneItemList", { sceneName });
+    const items = resp?.responseData?.sceneItems;
+    if (!Array.isArray(items)) return;
+
+    const byId = new Map<number, string>();
+    // Drop this scene's stale transforms before re-adding current ones.
+    for (const key of [...this.transforms.keys()]) {
+      if (key.startsWith(`${sceneName}|`)) this.transforms.delete(key);
+    }
+    for (const item of items) {
+      const sourceName = item?.sourceName;
+      const itemId = Number(item?.sceneItemId);
+      if (typeof sourceName !== "string" || !isFinite(itemId)) continue;
+      byId.set(itemId, sourceName);
+      const box = this.boxFromTransform(item?.sceneItemTransform);
+      if (box) this.transforms.set(`${sceneName}|${sourceName}`, box);
+    }
+    this.itemsByScene.set(sceneName, byId);
+    this.recomputeSources();
+  }
+
+  /** Rebuild the source-name lists shown in the picker (flat + per-scene). */
+  private recomputeSources(): void {
+    const set = new Set<string>();
+    const byScene: Record<string, string[]> = {};
+    for (const [sceneName, byId] of this.itemsByScene.entries()) {
+      const names = new Set<string>();
+      for (const name of byId.values()) {
+        set.add(name);
+        names.add(name);
+      }
+      byScene[sceneName] = [...names].sort();
+    }
+    this.status = { ...this.status, sources: [...set].sort(), sourcesByScene: byScene };
+  }
+
+  /**
+   * Convert an OBS scene-item transform into a normalized (0..1) on-screen box.
+   * OBS gives the final rendered width/height (scale + crop + bounds already
+   * applied); positionX/Y is the anchor point named by `alignment`, which we
+   * resolve back to the top-left corner. Rotation is ignored (v1).
+   */
+  private boxFromTransform(t: any): ObsBox | null {
+    if (!t) return null;
+    const w = Number(t.width);
+    const h = Number(t.height);
+    if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) return null;
+    const px = Number(t.positionX) || 0;
+    const py = Number(t.positionY) || 0;
+    const a = Number(t.alignment) || 0;
+
+    let x = px;
+    if (a & ALIGN_RIGHT) x = px - w;
+    else if (!(a & ALIGN_LEFT)) x = px - w / 2; // horizontally centered
+
+    let y = py;
+    if (a & ALIGN_BOTTOM) y = py - h;
+    else if (!(a & ALIGN_TOP)) y = py - h / 2; // vertically centered
+
+    return {
+      x: x / this.base.width,
+      y: y / this.base.height,
+      w: w / this.base.width,
+      h: h / this.base.height,
     };
   }
 
@@ -229,7 +412,11 @@ export class ObsConnector {
       this.ws = null;
     }
     this.pending.clear();
-    if (resetStatus) this.status = { ...this.status, connected: false };
+    this.itemsByScene.clear();
+    this.transforms.clear();
+    if (resetStatus) {
+      this.status = { ...this.status, connected: false, sources: [], sourcesByScene: {} };
+    }
   }
 
   private clearTimers(): void {

@@ -121,14 +121,44 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
   );
   streamerbot.configure(store.get().streamerbot);
 
-  // OBS connector: watches the program scene and drives the app's current scene.
+  // Re-apply every OBS-source lock: pull each locked instance's source box from
+  // OBS and rescale it into canvas pixels. Broadcasts once if anything moved.
+  function applyObsLocks(): void {
+    const state = store.get();
+    const { width: cw, height: ch } = state.canvas;
+    let changed = false;
+    for (const scene of state.scenes) {
+      for (const inst of scene.instances) {
+        if (!inst.obsSource) continue;
+        const box = obs.getBox(scene.obsSceneName, inst.obsSource);
+        if (!box) continue;
+        // If the element has a border thickness, grow the box outward by it so a
+        // frame wraps AROUND the source (its transparent center then matches the
+        // source) instead of sitting on top of the source's edge/corners.
+        const t = Number(inst.values.thickness);
+        const outset = Number.isFinite(t) && t > 0 ? t : 0;
+        const moved = store.applyObsLayout(
+          inst.instanceId,
+          { x: box.x * cw - outset, y: box.y * ch - outset },
+          { width: box.w * cw + outset * 2, height: box.h * ch + outset * 2 },
+        );
+        changed = changed || moved;
+      }
+    }
+    if (changed) broadcast({ type: "state", state: store.get() });
+  }
+
+  // OBS connector: watches the program scene (drives the app's current scene)
+  // and source transforms (drives per-element OBS-source locks).
   const obs = new ObsConnector(
     (obsSceneName) => {
       if (store.setCurrentSceneByObsName(obsSceneName)) {
         broadcast({ type: "state", state: store.get() });
       }
+      applyObsLocks(); // snap locked elements in the newly-shown scene
     },
     () => broadcast({ type: "integration", integration: integration() }),
+    () => applyObsLocks(),
   );
   obs.configure(store.get().obs);
 
@@ -200,12 +230,21 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         broadcast({ type: "integration", integration: integration() });
         return;
       }
+      if (message.type === "setInstanceObsSource") {
+        store.setInstanceObsSource(message.instanceId, message.obsSource);
+        broadcast({ type: "state", state: store.get() });
+        applyObsLocks(); // snap to the source's current transform right away
+        return;
+      }
       if (message.type === "play") {
         broadcast({ type: "pulse", instanceId: message.instanceId });
         return;
       }
       handle(message, store, registry, variables);
       broadcast({ type: "state", state: store.get() });
+      // A field change (e.g. border thickness) can change a locked element's
+      // outset — re-apply locks so the wrap updates without waiting for OBS.
+      applyObsLocks();
     });
   }
 

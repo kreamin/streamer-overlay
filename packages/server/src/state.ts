@@ -180,6 +180,42 @@ export class StateStore {
     this.touched();
   }
 
+  /** Lock an instance's layout to an OBS source (null clears the lock). */
+  setInstanceObsSource(instanceId: string, obsSource: string | null): void {
+    const inst = this.find(instanceId);
+    if (!inst) return;
+    const name = (obsSource ?? "").trim();
+    if (name) inst.obsSource = name;
+    else delete inst.obsSource;
+    this.touched();
+  }
+
+  /**
+   * Apply an OBS-driven layout to a locked instance. Rounds to whole pixels and
+   * only writes/persists when something actually moved (so live transform
+   * events don't spam saves). Returns true if the layout changed.
+   */
+  applyObsLayout(instanceId: string, position: OverlayPosition, size: OverlaySize): boolean {
+    const inst = this.find(instanceId);
+    if (!inst) return false;
+    const x = Math.round(position.x);
+    const y = Math.round(position.y);
+    const w = Math.round(size.width);
+    const h = Math.round(size.height);
+    if (
+      inst.position.x === x &&
+      inst.position.y === y &&
+      inst.size.width === w &&
+      inst.size.height === h
+    ) {
+      return false;
+    }
+    inst.position = { x, y };
+    inst.size = { width: w, height: h };
+    this.touched();
+    return true;
+  }
+
   /** Bind a field to a live variable, or pass null to return it to manual. */
   setBinding(instanceId: string, fieldId: string, variableKey: string | null): void {
     const inst = this.find(instanceId);

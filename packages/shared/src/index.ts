@@ -71,6 +71,13 @@ export interface OverlayInstance {
    * A field with no entry here is "manual" (edited by hand in the control panel).
    */
   bindings?: Record<string, string>;
+  /**
+   * When set, this instance's position + size are locked to an OBS source of
+   * this name (its scene-item transform, one-way OBS → app). The app rescales
+   * the OBS transform into canvas space and keeps it in sync live; the element
+   * can't be dragged/resized in the control panel while locked.
+   */
+  obsSource?: string;
   /** Stacking order; higher renders on top. */
   z: number;
 }
@@ -126,6 +133,10 @@ export interface IntegrationStatus {
     currentScene?: string;
     /** All OBS scene names, for the per-scene link picker. */
     scenes: string[];
+    /** All OBS source (scene-item) names, deduped — for lock pickers on unlinked scenes. */
+    sources: string[];
+    /** Source (scene-item) names per OBS scene — used when an app scene is OBS-linked. */
+    sourcesByScene: Record<string, string[]>;
   };
   /** Number of push clients connected to the /ingest endpoint (advanced). */
   ingestClients: number;
@@ -200,5 +211,7 @@ export type ClientMessage =
   | { type: "setObs"; enabled?: boolean; host?: string; port?: number; password?: string }
   // Link an app scene to an OBS scene name (null = unlink).
   | { type: "setSceneObsLink"; sceneId: string; obsSceneName: string | null }
+  // Lock an instance's position/size to an OBS source's transform (null = unlock).
+  | { type: "setInstanceObsSource"; instanceId: string; obsSource: string | null }
   // Manually trigger an overlay instance to play (e.g. the gif alert Play button).
   | { type: "play"; instanceId: string };

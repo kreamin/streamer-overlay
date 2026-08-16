@@ -30,6 +30,13 @@ export function App() {
   const maxZ = instances.reduce((m, i) => Math.max(m, i.z), 0);
   const minZ = instances.reduce((m, i) => Math.min(m, i.z), 0);
 
+  // If this app scene follows an OBS scene, only offer that OBS scene's sources
+  // to lock to; otherwise fall back to every source OBS knows about.
+  const linkedObsScene = activeScene(state).obsSceneName;
+  const obsSources = linkedObsScene
+    ? (integration.obs.sourcesByScene[linkedObsScene] ?? [])
+    : integration.obs.sources;
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-4 border-b border-white/10 px-5 py-3">
@@ -141,6 +148,9 @@ export function App() {
               instance={selected}
               overlay={selectedOverlay}
               variables={variables}
+              obsSources={obsSources}
+              obsConnected={integration.obs.connected}
+              obsSceneLink={linkedObsScene}
               send={send}
               onBringToFront={() =>
                 send({ type: "setLayout", instanceId: selected.instanceId, z: maxZ + 1 })
