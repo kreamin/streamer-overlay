@@ -132,16 +132,25 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         if (!inst.obsSource) continue;
         const box = obs.getBox(scene.obsSceneName, inst.obsSource);
         if (!box) continue;
-        // If the element has a border thickness, grow the box outward by it so a
-        // frame wraps AROUND the source (its transparent center then matches the
-        // source) instead of sitting on top of the source's edge/corners.
-        const t = Number(inst.values.thickness);
-        const outset = Number.isFinite(t) && t > 0 ? t : 0;
-        const moved = store.applyObsLayout(
-          inst.instanceId,
-          { x: box.x * cw - outset, y: box.y * ch - outset },
-          { width: box.w * cw + outset * 2, height: box.h * ch + outset * 2 },
-        );
+        const offX = Number(inst.obsOffsetX) || 0;
+        const offY = Number(inst.obsOffsetY) || 0;
+        let position: { x: number; y: number };
+        let size: { width: number; height: number };
+        if (inst.obsMatchSize === false) {
+          // Follow the source's position only; keep the element's own size
+          // (e.g. a small sub-goal parked in the webcam's corner via offset).
+          position = { x: box.x * cw + offX, y: box.y * ch + offY };
+          size = { width: inst.size.width, height: inst.size.height };
+        } else {
+          // Match the source's size. If the element has a border thickness, grow
+          // the box outward by it so a frame wraps AROUND the source (transparent
+          // center matches the source) instead of sitting on its edge/corners.
+          const t = Number(inst.values.thickness);
+          const outset = Number.isFinite(t) && t > 0 ? t : 0;
+          position = { x: box.x * cw - outset + offX, y: box.y * ch - outset + offY };
+          size = { width: box.w * cw + outset * 2, height: box.h * ch + outset * 2 };
+        }
+        const moved = store.applyObsLayout(inst.instanceId, position, size);
         changed = changed || moved;
       }
     }
@@ -234,6 +243,16 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         store.setInstanceObsSource(message.instanceId, message.obsSource);
         broadcast({ type: "state", state: store.get() });
         applyObsLocks(); // snap to the source's current transform right away
+        return;
+      }
+      if (message.type === "setInstanceObsLock") {
+        store.setInstanceObsLock(message.instanceId, {
+          matchSize: message.matchSize,
+          offsetX: message.offsetX,
+          offsetY: message.offsetY,
+        });
+        broadcast({ type: "state", state: store.get() });
+        applyObsLocks(); // re-apply with the new size mode / offset
         return;
       }
       if (message.type === "play") {

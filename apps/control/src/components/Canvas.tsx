@@ -88,13 +88,17 @@ export function Canvas({
           {activeScene(state).instances.map((inst) => {
             const selected = inst.instanceId === selectedId;
             const obsLocked = Boolean(inst.obsSource);
+            // Locked = OBS owns the POSITION (no dragging). Size is OBS-owned too
+            // unless "Follow position only" (obsMatchSize === false), where the
+            // element keeps its own size and stays resizable here.
+            const sizeLocked = obsLocked && inst.obsMatchSize !== false;
             return (
               <Rnd
                 key={inst.instanceId}
                 scale={scale}
                 bounds="parent"
                 disableDragging={obsLocked}
-                enableResizing={!obsLocked}
+                enableResizing={!sizeLocked}
                 size={{ width: inst.size.width, height: inst.size.height }}
                 position={{ x: inst.position.x, y: inst.position.y }}
                 onDragStart={() => onSelect(inst.instanceId)}
@@ -137,7 +141,10 @@ export function Canvas({
                       width: Math.round(parseFloat(ref.style.width)),
                       height: Math.round(parseFloat(ref.style.height)),
                     },
-                    position: { x: Math.round(pos.x), y: Math.round(pos.y) },
+                    // Position stays OBS-owned when locked; only send it otherwise.
+                    ...(obsLocked
+                      ? {}
+                      : { position: { x: Math.round(pos.x), y: Math.round(pos.y) } }),
                   })
                 }
                 onClick={() => onSelect(inst.instanceId)}

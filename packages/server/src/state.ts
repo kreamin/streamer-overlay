@@ -190,6 +190,19 @@ export class StateStore {
     this.touched();
   }
 
+  /** Tune an existing OBS-source lock: size behavior + position offset. */
+  setInstanceObsLock(
+    instanceId: string,
+    patch: { matchSize?: boolean; offsetX?: number; offsetY?: number },
+  ): void {
+    const inst = this.find(instanceId);
+    if (!inst) return;
+    if (patch.matchSize !== undefined) inst.obsMatchSize = patch.matchSize;
+    if (patch.offsetX !== undefined) inst.obsOffsetX = Math.round(patch.offsetX);
+    if (patch.offsetY !== undefined) inst.obsOffsetY = Math.round(patch.offsetY);
+    this.touched();
+  }
+
   /**
    * Apply an OBS-driven layout to a locked instance. Rounds to whole pixels and
    * only writes/persists when something actually moved (so live transform

@@ -339,15 +339,46 @@ export class ObsConnector {
 
   /**
    * Convert an OBS scene-item transform into a normalized (0..1) on-screen box.
-   * OBS gives the final rendered width/height (scale + crop + bounds already
-   * applied); positionX/Y is the anchor point named by `alignment`, which we
-   * resolve back to the top-left corner. Rotation is ignored (v1).
+   *
+   * We compute the VISIBLE size ourselves as (sourceW − cropL − cropR) × scaleX
+   * (and likewise for height), because OBS's reported `width`/`height` don't
+   * reliably subtract the per-scene crop — using them left a cropped source's
+   * border hanging off the cropped side. If a bounding box is set we use its
+   * dimensions instead. positionX/Y is the anchor named by `alignment`, resolved
+   * back to the top-left (OBS keeps position at the visible edge after cropping).
+   * Rotation is ignored (v1).
    */
   private boxFromTransform(t: any): ObsBox | null {
     if (!t) return null;
-    const w = Number(t.width);
-    const h = Number(t.height);
-    if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) return null;
+    const scaleX = Number(t.scaleX);
+    const scaleY = Number(t.scaleY);
+    const srcW = Number(t.sourceWidth);
+    const srcH = Number(t.sourceHeight);
+    const cropL = Number(t.cropLeft) || 0;
+    const cropR = Number(t.cropRight) || 0;
+    const cropT = Number(t.cropTop) || 0;
+    const cropB = Number(t.cropBottom) || 0;
+    const boundsType = typeof t.boundsType === "string" ? t.boundsType : "OBS_BOUNDS_NONE";
+
+    let w: number;
+    let h: number;
+    if (boundsType !== "OBS_BOUNDS_NONE") {
+      w = Number(t.boundsWidth);
+      h = Number(t.boundsHeight);
+    } else if (isFinite(srcW) && isFinite(srcH) && isFinite(scaleX) && isFinite(scaleY)) {
+      w = (srcW - cropL - cropR) * scaleX;
+      h = (srcH - cropT - cropB) * scaleY;
+    } else {
+      w = Number(t.width);
+      h = Number(t.height);
+    }
+    // Fall back to OBS's reported size if the computed one is unusable.
+    if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) {
+      w = Number(t.width);
+      h = Number(t.height);
+      if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) return null;
+    }
+
     const px = Number(t.positionX) || 0;
     const py = Number(t.positionY) || 0;
     const a = Number(t.alignment) || 0;

@@ -72,12 +72,22 @@ export interface OverlayInstance {
    */
   bindings?: Record<string, string>;
   /**
-   * When set, this instance's position + size are locked to an OBS source of
-   * this name (its scene-item transform, one-way OBS → app). The app rescales
-   * the OBS transform into canvas space and keeps it in sync live; the element
-   * can't be dragged/resized in the control panel while locked.
+   * When set, this instance's position (and, unless obsMatchSize is false, its
+   * size) are locked to an OBS source of this name — its scene-item transform,
+   * one-way OBS → app. The app rescales the OBS transform into canvas space and
+   * keeps it in sync live.
    */
   obsSource?: string;
+  /**
+   * If false, the lock follows the source's POSITION only and the element keeps
+   * its own size (e.g. a small sub-goal parked in the webcam's corner). Undefined
+   * or true = match the source's size too (e.g. a border/frame). Only meaningful
+   * with obsSource set.
+   */
+  obsMatchSize?: boolean;
+  /** Canvas-pixel nudge applied to the locked position (QOL / fine alignment). */
+  obsOffsetX?: number;
+  obsOffsetY?: number;
   /** Stacking order; higher renders on top. */
   z: number;
 }
@@ -213,5 +223,13 @@ export type ClientMessage =
   | { type: "setSceneObsLink"; sceneId: string; obsSceneName: string | null }
   // Lock an instance's position/size to an OBS source's transform (null = unlock).
   | { type: "setInstanceObsSource"; instanceId: string; obsSource: string | null }
+  // Tune an existing OBS-source lock: size behavior + position offset.
+  | {
+      type: "setInstanceObsLock";
+      instanceId: string;
+      matchSize?: boolean;
+      offsetX?: number;
+      offsetY?: number;
+    }
   // Manually trigger an overlay instance to play (e.g. the gif alert Play button).
   | { type: "play"; instanceId: string };
