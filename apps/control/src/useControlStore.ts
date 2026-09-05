@@ -21,6 +21,7 @@ export function useControlStore() {
     obs: { enabled: false, connected: false, scenes: [], sources: [], sourcesByScene: {} },
     ingestClients: 0,
   });
+  const [hotkeyStatus, setHotkeyStatus] = useState<Record<string, boolean>>({});
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -48,6 +49,8 @@ export function useControlStore() {
           setVariables(msg.variables);
         } else if (msg.type === "integration") {
           setIntegration(msg.integration);
+        } else if (msg.type === "hotkeyStatus") {
+          setHotkeyStatus(msg.results);
         }
       };
       socket.onclose = () => {
@@ -69,5 +72,5 @@ export function useControlStore() {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
   }, []);
 
-  return { state, installed, variables, integration, connected, send };
+  return { state, installed, variables, integration, hotkeyStatus, connected, send };
 }

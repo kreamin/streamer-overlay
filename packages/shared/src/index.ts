@@ -95,6 +95,38 @@ export interface OverlayInstance {
 /** Live variables pushed in by integrations (key -> value). */
 export type Variables = Record<string, FieldValue>;
 
+/** What a hotkey does when fired (by a keyboard shortcut or the /api/action URL). */
+export type HotkeyTarget =
+  // Fire an overlay instance's trigger (e.g. roll the dice, play a gif alert).
+  | { kind: "pulse"; instanceId: string }
+  // Toggle an overlay instance's visibility (show/hide in OBS).
+  | { kind: "toggleActive"; instanceId: string }
+  // Switch the app to a scene.
+  | { kind: "switchScene"; sceneId: string };
+
+/**
+ * A user-defined action, fireable two ways: a global keyboard shortcut (captured
+ * by the desktop app) and an HTTP URL `/api/action/<slug>` (for Stream Deck via
+ * Companion / an HTTP-request button). Both run the same `target`.
+ */
+export interface HotkeyAction {
+  id: string;
+  label: string;
+  /** Electron accelerator, e.g. "CommandOrControl+Alt+L". Empty = no keyboard shortcut. */
+  shortcut?: string;
+  target: HotkeyTarget;
+}
+
+/** URL-safe slug for a hotkey's /api/action/<slug> endpoint (falls back to its id). */
+export function hotkeySlug(action: HotkeyAction): string {
+  const s = action.label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || action.id;
+}
+
 /**
  * A named collection of placed overlays. Each scene owns its own instances, so
  * switching scenes swaps which overlays render (mirrors OBS scenes). The output
@@ -166,6 +198,8 @@ export interface AppState {
   currentSceneId: string;
   streamerbot: StreamerbotConfig;
   obs: ObsConfig;
+  /** User-defined hotkeys/actions (keyboard shortcut + Stream Deck URL). */
+  hotkeys: HotkeyAction[];
 }
 
 /** The scene that's currently live (rendered + edited). Falls back to the first. */
@@ -189,7 +223,9 @@ export type ServerMessage =
   | { type: "variables"; variables: Variables }
   | { type: "integration"; integration: IntegrationStatus }
   // One-shot "play now" pulse for a specific overlay instance (e.g. gif alerts).
-  | { type: "pulse"; instanceId: string };
+  | { type: "pulse"; instanceId: string }
+  // Per-hotkey keyboard-registration results (hotkeyId -> registered ok?).
+  | { type: "hotkeyStatus"; results: Record<string, boolean> };
 
 /** Messages clients (control panel) send to the server. */
 export type ClientMessage =
@@ -232,4 +268,14 @@ export type ClientMessage =
       offsetY?: number;
     }
   // Manually trigger an overlay instance to play (e.g. the gif alert Play button).
-  | { type: "play"; instanceId: string };
+  | { type: "play"; instanceId: string }
+  // Hotkeys / actions (fireable by keyboard shortcut or the /api/action URL).
+  | { type: "addHotkey" }
+  | { type: "removeHotkey"; hotkeyId: string }
+  | {
+      type: "updateHotkey";
+      hotkeyId: string;
+      label?: string;
+      shortcut?: string | null;
+      target?: HotkeyTarget;
+    };

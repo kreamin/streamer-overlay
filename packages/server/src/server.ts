@@ -9,9 +9,11 @@ import { OverlayRegistry } from "./registry.js";
 import { VariableStore } from "./variables.js";
 import { StreamerbotConnector } from "./streamerbot.js";
 import { ObsConnector } from "./obs.js";
+import { hotkeySlug } from "@stream-overlay/shared";
 import type {
   ClientMessage,
   FieldValue,
+  HotkeyAction,
   InstalledOverlay,
   IntegrationStatus,
   OverlayInstance,
@@ -28,10 +30,18 @@ export interface ServerConfig {
   controlDist: string;
   /** Writable dir for user-uploaded media (gifs/images), served at /media. */
   mediaDir: string;
+  /** Called (on changes) with the current hotkeys so the desktop app can (re)register global shortcuts. */
+  onHotkeysChanged?: (hotkeys: HotkeyAction[]) => void;
 }
 
 export interface RunningServer {
   close(): Promise<void>;
+  /** Current hotkey list (for the desktop app to register global shortcuts). */
+  getHotkeys(): HotkeyAction[];
+  /** Run a hotkey's action by id (called from a global keyboard shortcut). */
+  fireHotkey(hotkeyId: string): void;
+  /** Push per-hotkey keyboard-registration results to the control panel. */
+  reportHotkeyStatus(results: Record<string, boolean>): void;
 }
 
 // Integrations (Streamer.bot etc.) push variables here.
@@ -74,6 +84,17 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     } catch {
       res.status(500).json({ error: "upload failed" });
     }
+  });
+  // Fire a hotkey's action by slug (or id). GET and POST both work, so any
+  // Stream Deck HTTP button / Bitfocus Companion can hit it.
+  app.all("/api/action/:key", (req, res) => {
+    const key = req.params.key;
+    const hk = store.get().hotkeys.find((h) => hotkeySlug(h) === key || h.id === key);
+    if (!hk) {
+      res.status(404).json({ error: "no such action" });
+      return;
+    }
+    res.json({ ok: runAction(hk.target) });
   });
   app.get("/api/state", (_req, res) => res.json(store.get()));
   app.get("/api/installed", (_req, res) => res.json(registry.list()));
@@ -155,6 +176,35 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       }
     }
     if (changed) broadcast({ type: "state", state: store.get() });
+  }
+
+  // Run a hotkey's action (from a keyboard shortcut, the /api/action URL, or a
+  // future Stream Deck plugin). All three funnel through here.
+  function runAction(target: HotkeyAction["target"]): boolean {
+    switch (target.kind) {
+      case "pulse":
+        if (!target.instanceId) return false;
+        broadcast({ type: "pulse", instanceId: target.instanceId });
+        return true;
+      case "toggleActive":
+        if (!target.instanceId) return false;
+        store.toggleActive(target.instanceId);
+        broadcast({ type: "state", state: store.get() });
+        return true;
+      case "switchScene":
+        if (!target.sceneId) return false;
+        store.setCurrentScene(target.sceneId);
+        broadcast({ type: "state", state: store.get() });
+        applyObsLocks(); // snap locked elements in the newly-shown scene
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function fireHotkeyById(hotkeyId: string): boolean {
+    const hk = store.get().hotkeys.find((h) => h.id === hotkeyId);
+    return hk ? runAction(hk.target) : false;
   }
 
   // OBS connector: watches the program scene (drives the app's current scene)
@@ -264,6 +314,14 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
       // A field change (e.g. border thickness) can change a locked element's
       // outset — re-apply locks so the wrap updates without waiting for OBS.
       applyObsLocks();
+      // Hotkey edits: tell the desktop app to (re)register global shortcuts.
+      if (
+        message.type === "addHotkey" ||
+        message.type === "removeHotkey" ||
+        message.type === "updateHotkey"
+      ) {
+        config.onHotkeysChanged?.(store.get().hotkeys);
+      }
     });
   }
 
@@ -278,6 +336,13 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         wss.close();
         httpServer.close(() => resolve());
       }),
+    getHotkeys: () => store.get().hotkeys,
+    fireHotkey: (hotkeyId: string) => {
+      fireHotkeyById(hotkeyId);
+    },
+    reportHotkeyStatus: (results: Record<string, boolean>) => {
+      broadcast({ type: "hotkeyStatus", results });
+    },
   };
 }
 
@@ -363,6 +428,19 @@ function handle(
       break;
     case "setCanvas":
       store.setCanvas(message.width, message.height);
+      break;
+    case "addHotkey":
+      store.addHotkey();
+      break;
+    case "removeHotkey":
+      store.removeHotkey(message.hotkeyId);
+      break;
+    case "updateHotkey":
+      store.updateHotkey(message.hotkeyId, {
+        label: message.label,
+        shortcut: message.shortcut,
+        target: message.target,
+      });
       break;
   }
 }

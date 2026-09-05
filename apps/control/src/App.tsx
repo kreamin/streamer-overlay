@@ -7,11 +7,14 @@ import { FieldControls } from "./components/FieldControls";
 import { Canvas } from "./components/Canvas";
 import { SceneBar } from "./components/SceneBar";
 import { Settings } from "./components/Settings";
+import { HotkeysPage } from "./components/HotkeysPage";
 
 export function App() {
-  const { state, installed, variables, integration, connected, send } = useControlStore();
+  const { state, installed, variables, integration, hotkeyStatus, connected, send } =
+    useControlStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [view, setView] = useState<"layout" | "hotkeys">("layout");
 
   if (!state) {
     return (
@@ -41,6 +44,19 @@ export function App() {
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-4 border-b border-white/10 px-5 py-3">
         <h1 className="text-sm font-semibold">Control Panel</h1>
+        <div className="flex gap-1 rounded-lg bg-white/5 p-0.5 text-xs">
+          {(["layout", "hotkeys"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`rounded-md px-2.5 py-1 font-medium capitalize ${
+                view === v ? "bg-indigo-500 text-white" : "text-white/60 hover:text-white"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
         <span
           className={`ml-auto flex items-center gap-1.5 text-xs ${
             integration.streamerbot.connected
@@ -115,57 +131,68 @@ export function App() {
         </button>
       </header>
 
-      <SceneBar state={state} obsScenes={integration.obs.scenes} send={send} />
+      {view === "hotkeys" ? (
+        <HotkeysPage
+          state={state}
+          installed={installed}
+          hotkeyStatus={hotkeyStatus}
+          send={send}
+        />
+      ) : (
+        <>
+          <SceneBar state={state} obsScenes={integration.obs.scenes} send={send} />
 
-      <div className="flex min-h-0 flex-1">
-        {/* Left: library + active instances */}
-        <aside className="w-72 shrink-0 space-y-6 overflow-y-auto border-r border-white/10 p-4">
-          <OverlayLibrary installed={installed} send={send} />
-          <InstanceList
-            state={state}
-            installed={installed}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            send={send}
-          />
-        </aside>
+          <div className="flex min-h-0 flex-1">
+            {/* Left: library + active instances */}
+            <aside className="w-72 shrink-0 space-y-6 overflow-y-auto border-r border-white/10 p-4">
+              <OverlayLibrary installed={installed} send={send} />
+              <InstanceList
+                state={state}
+                installed={installed}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                send={send}
+              />
+            </aside>
 
-        {/* Center: canvas (fills the panel; Canvas scales itself to fit) */}
-        <main className="flex min-w-0 flex-1 overflow-hidden">
-          <Canvas
-            state={state}
-            installed={installed}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            send={send}
-          />
-        </main>
+            {/* Center: canvas (fills the panel; Canvas scales itself to fit) */}
+            <main className="flex min-w-0 flex-1 overflow-hidden">
+              <Canvas
+                state={state}
+                installed={installed}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                send={send}
+              />
+            </main>
 
-        {/* Right: controls for the selected overlay */}
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-white/10 p-4">
-          {selected && selectedOverlay ? (
-            <FieldControls
-              instance={selected}
-              overlay={selectedOverlay}
-              variables={variables}
-              obsSources={obsSources}
-              obsConnected={integration.obs.connected}
-              obsSceneLink={linkedObsScene}
-              send={send}
-              onBringToFront={() =>
-                send({ type: "setLayout", instanceId: selected.instanceId, z: maxZ + 1 })
-              }
-              onSendToBack={() =>
-                send({ type: "setLayout", instanceId: selected.instanceId, z: minZ - 1 })
-              }
-            />
-          ) : (
-            <p className="text-sm text-white/40">
-              Select an overlay to edit its settings.
-            </p>
-          )}
-        </aside>
-      </div>
+            {/* Right: controls for the selected overlay */}
+            <aside className="w-80 shrink-0 overflow-y-auto border-l border-white/10 p-4">
+              {selected && selectedOverlay ? (
+                <FieldControls
+                  instance={selected}
+                  overlay={selectedOverlay}
+                  variables={variables}
+                  obsSources={obsSources}
+                  obsConnected={integration.obs.connected}
+                  obsSceneLink={linkedObsScene}
+                  send={send}
+                  onBringToFront={() =>
+                    send({ type: "setLayout", instanceId: selected.instanceId, z: maxZ + 1 })
+                  }
+                  onSendToBack={() =>
+                    send({ type: "setLayout", instanceId: selected.instanceId, z: minZ - 1 })
+                  }
+                />
+              ) : (
+                <p className="text-sm text-white/40">
+                  Select an overlay to edit its settings.
+                </p>
+              )}
+            </aside>
+          </div>
+        </>
+      )}
 
       {showSettings && (
         <Settings

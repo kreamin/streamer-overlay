@@ -4,6 +4,8 @@ import { CANVAS } from "./constants.js";
 import type {
   AppState,
   FieldValue,
+  HotkeyAction,
+  HotkeyTarget,
   ObsConfig,
   OverlayInstance,
   OverlayPosition,
@@ -49,7 +51,9 @@ function normalize(parsed: Partial<AppState> & { instances?: OverlayInstance[] }
   let currentSceneId = parsed.currentSceneId ?? "";
   if (!scenes.some((s) => s.id === currentSceneId)) currentSceneId = scenes[0].id;
 
-  return { canvas, scenes, currentSceneId, streamerbot, obs };
+  const hotkeys = Array.isArray(parsed.hotkeys) ? parsed.hotkeys : [];
+
+  return { canvas, scenes, currentSceneId, streamerbot, obs, hotkeys };
 }
 
 /**
@@ -149,6 +153,14 @@ export class StateStore {
     const inst = this.find(instanceId);
     if (!inst) return;
     inst.active = active;
+    this.touched();
+  }
+
+  /** Flip an instance's visibility (used by toggle-active hotkeys). */
+  toggleActive(instanceId: string): void {
+    const inst = this.find(instanceId);
+    if (!inst) return;
+    inst.active = !inst.active;
     this.touched();
   }
 
@@ -347,6 +359,44 @@ export class StateStore {
     this.state.currentSceneId = scene.id;
     this.touched();
     return true;
+  }
+
+  // --- hotkeys / actions --------------------------------------------------
+
+  getHotkeys(): HotkeyAction[] {
+    return this.state.hotkeys;
+  }
+
+  /** Create a blank hotkey (target set later in the UI); returns its id. */
+  addHotkey(): string {
+    const id = crypto.randomUUID();
+    this.state.hotkeys.push({
+      id,
+      label: "New hotkey",
+      target: { kind: "pulse", instanceId: "" },
+    });
+    this.touched();
+    return id;
+  }
+
+  removeHotkey(hotkeyId: string): void {
+    this.state.hotkeys = this.state.hotkeys.filter((h) => h.id !== hotkeyId);
+    this.touched();
+  }
+
+  updateHotkey(
+    hotkeyId: string,
+    patch: { label?: string; shortcut?: string | null; target?: HotkeyTarget },
+  ): void {
+    const hk = this.state.hotkeys.find((h) => h.id === hotkeyId);
+    if (!hk) return;
+    if (patch.label !== undefined) hk.label = patch.label;
+    if (patch.shortcut !== undefined) {
+      if (patch.shortcut) hk.shortcut = patch.shortcut;
+      else delete hk.shortcut;
+    }
+    if (patch.target !== undefined) hk.target = patch.target;
+    this.touched();
   }
 
   /** Find an instance by id across all scenes (ids are globally unique). */

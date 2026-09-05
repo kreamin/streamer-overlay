@@ -2,13 +2,44 @@
 //   - Runs the server in-process (build/server.cjs, beside this file).
 //   - Env-aware paths via app.isPackaged.
 //   - Checks GitHub Releases for updates on launch (packaged only).
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, globalShortcut } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
 
 const PORT = 4747;
 let server = null; // RunningServer handle (only set when WE started it)
+
+// (Re)register OS-global keyboard shortcuts for the app's hotkeys. Each press
+// fires the same action the /api/action URL does. Reports back which ones
+// registered (a combo already taken by another app fails) so the panel can flag
+// it. Called on launch and whenever the hotkey list changes.
+function registerHotkeys(hotkeys) {
+  if (!server) return; // only when WE own the server (not when reusing one)
+  globalShortcut.unregisterAll();
+  const results = {};
+  for (const h of hotkeys || []) {
+    if (!h.shortcut) continue;
+    let ok = false;
+    try {
+      ok = globalShortcut.register(h.shortcut, () => {
+        try {
+          server.fireHotkey(h.id);
+        } catch {
+          /* ignore */
+        }
+      });
+    } catch {
+      ok = false;
+    }
+    results[h.id] = ok;
+  }
+  try {
+    server.reportHotkeyStatus(results);
+  } catch {
+    /* ignore */
+  }
+}
 
 // At runtime this file lives in <app>/build, next to server.cjs.
 function resolvePaths() {
@@ -145,7 +176,9 @@ async function boot() {
       overlayDist: paths.overlayDist,
       controlDist: paths.controlDist,
       mediaDir: paths.mediaDir,
+      onHotkeysChanged: registerHotkeys, // re-register when the user edits hotkeys
     });
+    registerHotkeys(server.getHotkeys()); // register the saved hotkeys on launch
   }
 
   createWindow();
@@ -159,5 +192,6 @@ async function boot() {
 app.whenReady().then(boot);
 app.on("window-all-closed", () => app.quit());
 app.on("will-quit", async () => {
+  globalShortcut.unregisterAll();
   if (server) await server.close();
 });

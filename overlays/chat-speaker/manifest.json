@@ -1,0 +1,18 @@
+{
+  "id": "chat-speaker",
+  "name": "Chat Speaker",
+  "version": "1.0.0",
+  "author": "Noah",
+  "description": "A ChatGod-style 'voice of chat' panel — shows a selected chatter's name and their latest message, big on screen. Bind name + message to your Streamer.bot player globals; the message auto-sizes to fill the box. (Display only — TTS and selection are handled elsewhere.)",
+  "defaultSize": { "width": 640, "height": 220 },
+  "fields": [
+    { "id": "name", "label": "Speaker name  (bind → your player global)", "type": "text", "default": "" },
+    { "id": "message", "label": "Message  (bind → their message global)", "type": "text", "default": "" },
+    { "id": "accent", "label": "Name color", "type": "color", "default": "#ffd35c" },
+    { "id": "textColor", "label": "Message color", "type": "color", "default": "#ffffff" },
+    { "id": "bgColor", "label": "Background color", "type": "color", "default": "#0f1116" },
+    { "id": "bgOpacity", "label": "Background opacity (0-100)", "type": "number", "default": 82, "step": 5, "min": 0, "max": 100 },
+    { "id": "showBorder", "label": "Show border/blur", "type": "boolean", "default": true },
+    { "id": "hideWhenEmpty", "label": "Hide when no message", "type": "boolean", "default": true }
+  ]
+}
