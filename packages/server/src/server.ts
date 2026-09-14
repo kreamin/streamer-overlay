@@ -18,6 +18,7 @@ import type {
   IntegrationStatus,
   OverlayInstance,
   ServerMessage,
+  Variables,
 } from "@stream-overlay/shared";
 
 /** All paths are injected so the same code runs in dev and inside the packaged app. */
@@ -123,12 +124,66 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     ingestClients: ingestSockets.size,
   });
 
-  // A variable changed: refresh bound fields and tell the control panel.
+  const instanceOverlayId = (instanceId: string): string => {
+    for (const scene of store.get().scenes) {
+      const inst = scene.instances.find((i) => i.instanceId === instanceId);
+      if (inst) return inst.overlayId;
+    }
+    return "";
+  };
+
+  // Is this overlay field a trigger? (Bound triggers fire a pulse instead of
+  // having their value pushed into the overlay.)
+  const isTrigger = (overlayId: string, fieldId: string): boolean =>
+    registry.find(overlayId)?.manifest.fields.some((f) => f.id === fieldId && f.type === "trigger") ??
+    false;
+
+  // --- Bound-trigger firing -----------------------------------------------
+  // A trigger bound to a Streamer.bot global fires a pulse when that global's
+  // value changes. We track the last value here (NOT in the overlay), and seed a
+  // baseline on the first poll so existing globals don't fire on startup. Crucially,
+  // a NON-persistent global that's absent at startup and appears later (a real
+  // redemption) IS a change → it fires. This fixes the "first redemption after
+  // launch doesn't play" bug, and works the same for persistent/non-persistent.
+  let triggersPrimed = false;
+  const lastTriggerValues = new Map<string, FieldValue>(); // `${instanceId}:${fieldId}` -> value
+
+  function seedTrigger(instanceId: string, fieldId: string, key: string): void {
+    const vars = variables.all();
+    if (key in vars) lastTriggerValues.set(`${instanceId}:${fieldId}`, vars[key]);
+  }
+
+  function fireBoundTriggers(vars: Variables): void {
+    const priming = !triggersPrimed;
+    const pulses: string[] = [];
+    for (const scene of store.get().scenes) {
+      for (const inst of scene.instances) {
+        if (!inst.bindings) continue;
+        for (const [fieldId, key] of Object.entries(inst.bindings)) {
+          if (!isTrigger(inst.overlayId, fieldId)) continue;
+          if (!(key in vars)) continue;
+          const mapKey = `${inst.instanceId}:${fieldId}`;
+          const prev = lastTriggerValues.get(mapKey);
+          const now = vars[key];
+          lastTriggerValues.set(mapKey, now);
+          if (!priming && prev !== now) pulses.push(inst.instanceId);
+        }
+      }
+    }
+    // Prime once we've actually seen some variables (avoids a spurious burst if
+    // the very first poll comes back empty while Streamer.bot is connecting).
+    if (priming && Object.keys(vars).length > 0) triggersPrimed = true;
+    for (const id of pulses) broadcast({ type: "pulse", instanceId: id });
+  }
+
+  // A variable changed: refresh bound fields, fire bound triggers, and tell the
+  // control panel. Trigger fields are skipped by applyBoundValues (they pulse).
   function onVariablesChanged(): void {
     broadcast({ type: "variables", variables: variables.all() });
-    if (store.applyBoundValues(variables.all())) {
+    if (store.applyBoundValues(variables.all(), isTrigger)) {
       broadcast({ type: "state", state: store.get() });
     }
+    fireBoundTriggers(variables.all());
   }
 
   // Pull connector: mirrors the user's Streamer.bot globals into the variable
@@ -295,6 +350,18 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         applyObsLocks(); // snap to the source's current transform right away
         return;
       }
+      if (message.type === "setBinding") {
+        store.setBinding(message.instanceId, message.fieldId, message.variableKey);
+        // Non-trigger fields take their value immediately.
+        store.applyBoundValues(variables.all(), isTrigger);
+        // Trigger fields fire a pulse on change — seed the baseline so binding to
+        // an already-set global doesn't fire it right now.
+        if (message.variableKey && isTrigger(instanceOverlayId(message.instanceId), message.fieldId)) {
+          seedTrigger(message.instanceId, message.fieldId, message.variableKey);
+        }
+        broadcast({ type: "state", state: store.get() });
+        return;
+      }
       if (message.type === "setInstanceObsLock") {
         store.setInstanceObsLock(message.instanceId, {
           matchSize: message.matchSize,
@@ -309,7 +376,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         broadcast({ type: "pulse", instanceId: message.instanceId });
         return;
       }
-      handle(message, store, registry, variables);
+      handle(message, store, registry);
       broadcast({ type: "state", state: store.get() });
       // A field change (e.g. border thickness) can change a locked element's
       // outset — re-apply locks so the wrap updates without waiting for OBS.
@@ -376,12 +443,7 @@ function isFieldValue(v: unknown): v is FieldValue {
   return typeof v === "string" || typeof v === "number" || typeof v === "boolean";
 }
 
-function handle(
-  message: ClientMessage,
-  store: StateStore,
-  registry: OverlayRegistry,
-  variables: VariableStore,
-): void {
+function handle(message: ClientMessage, store: StateStore, registry: OverlayRegistry): void {
   switch (message.type) {
     case "addScene":
       store.addScene(message.name);
@@ -420,11 +482,6 @@ function handle(
       break;
     case "adjustValue":
       store.adjustValue(message.instanceId, message.fieldId, message.delta);
-      break;
-    case "setBinding":
-      store.setBinding(message.instanceId, message.fieldId, message.variableKey);
-      // Apply the current value immediately so binding takes effect at once.
-      store.applyBoundValues(variables.all());
       break;
     case "setCanvas":
       store.setCanvas(message.width, message.height);

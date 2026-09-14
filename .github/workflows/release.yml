@@ -30,3 +30,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release:win
+
+      # Use the tagged commit's message as the Release notes → the app shows it
+      # as the "What's new" text on the update splash. So whatever you write in
+      # the release commit message becomes the changelog users see.
+      - name: Set release notes from commit message
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --notes "$(git log -1 --pretty=%B)"

@@ -255,13 +255,21 @@ export class StateStore {
    * Push current variable values into any fields bound to them (across ALL
    * scenes, so bindings stay live for scenes that aren't currently showing).
    * Returns true if any value actually changed (so callers can skip broadcasts).
+   *
+   * `skip(overlayId, fieldId)` lets the caller exclude fields it handles itself —
+   * notably TRIGGER fields, whose value never goes into the overlay (they fire a
+   * pulse instead), so a bound trigger doesn't double-fire.
    */
-  applyBoundValues(variables: Variables): boolean {
+  applyBoundValues(
+    variables: Variables,
+    skip?: (overlayId: string, fieldId: string) => boolean,
+  ): boolean {
     let changed = false;
     for (const scene of this.state.scenes) {
       for (const inst of scene.instances) {
         if (!inst.bindings) continue;
         for (const [fieldId, key] of Object.entries(inst.bindings)) {
+          if (skip?.(inst.overlayId, fieldId)) continue;
           if (key in variables && inst.values[fieldId] !== variables[key]) {
             inst.values[fieldId] = variables[key];
             changed = true;
