@@ -12,6 +12,7 @@ import { ObsConnector } from "./obs.js";
 import { hotkeySlug } from "@stream-overlay/shared";
 import type {
   ClientMessage,
+  CloseAction,
   FieldValue,
   HotkeyAction,
   InstalledOverlay,
@@ -35,6 +36,8 @@ export interface ServerConfig {
   appVersion?: string;
   /** Called (on changes) with the current hotkeys so the desktop app can (re)register global shortcuts. */
   onHotkeysChanged?: (hotkeys: HotkeyAction[]) => void;
+  /** Called when the close-button preference changes (set from the control panel), so the desktop app can honour it. */
+  onCloseActionChanged?: (action: CloseAction) => void;
 }
 
 export interface RunningServer {
@@ -45,6 +48,10 @@ export interface RunningServer {
   fireHotkey(hotkeyId: string): void;
   /** Push per-hotkey keyboard-registration results to the control panel. */
   reportHotkeyStatus(results: Record<string, boolean>): void;
+  /** The persisted close-button preference (undefined = ask the user). */
+  getCloseAction(): CloseAction | undefined;
+  /** Persist the close-button preference (e.g. from the first-close dialog). */
+  setCloseAction(action: CloseAction): void;
 }
 
 // Integrations (Streamer.bot etc.) push variables here.
@@ -264,6 +271,13 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     return hk ? runAction(hk.target) : false;
   }
 
+  // Persist the close-button preference and let the desktop app honour it.
+  function applyCloseAction(action: CloseAction): void {
+    store.setCloseAction(action);
+    broadcast({ type: "state", state: store.get() });
+    config.onCloseActionChanged?.(action);
+  }
+
   // OBS connector: watches the program scene (drives the app's current scene)
   // and source transforms (drives per-element OBS-source locks).
   const obs = new ObsConnector(
@@ -347,6 +361,10 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         broadcast({ type: "integration", integration: integration() });
         return;
       }
+      if (message.type === "setCloseAction") {
+        applyCloseAction(message.action);
+        return;
+      }
       if (message.type === "setInstanceObsSource") {
         store.setInstanceObsSource(message.instanceId, message.obsSource);
         broadcast({ type: "state", state: store.get() });
@@ -413,6 +431,8 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
     reportHotkeyStatus: (results: Record<string, boolean>) => {
       broadcast({ type: "hotkeyStatus", results });
     },
+    getCloseAction: () => store.getCloseAction(),
+    setCloseAction: (action: CloseAction) => applyCloseAction(action),
   };
 }
 

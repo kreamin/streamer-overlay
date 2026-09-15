@@ -291,6 +291,42 @@ export function Settings({
           </div>
         </section>
 
+        {/* Close-button behaviour */}
+        <section className="mt-6">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
+            When you close the window
+          </h3>
+          <p className="mb-3 text-xs text-white/40">
+            Minimise to tray keeps the overlay running in the background so OBS keeps getting it.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              ["tray", "Minimise to tray"],
+              ["quit", "Quit"],
+            ] as const).map(([value, label]) => {
+              const active = state.closeAction === value;
+              return (
+                <button
+                  key={value}
+                  onClick={() => send({ type: "setCloseAction", action: value })}
+                  className={`rounded-md px-3 py-2 text-sm font-medium ${
+                    active
+                      ? "bg-indigo-500 text-white"
+                      : "bg-white/10 text-white/80 hover:bg-white/20"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {!state.closeAction && (
+            <p className="mt-2 text-xs text-white/30">
+              You'll be asked the first time you close the window.
+            </p>
+          )}
+        </section>
+
         <div className="mt-6 border-t border-white/10 pt-3 text-center text-xs text-white/30">
           kreamin's Streamin Overlay · v{version || "—"}
         </div>

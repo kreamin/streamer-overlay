@@ -3,6 +3,7 @@ import path from "node:path";
 import { CANVAS } from "./constants.js";
 import type {
   AppState,
+  CloseAction,
   FieldValue,
   HotkeyAction,
   HotkeyTarget,
@@ -52,8 +53,10 @@ function normalize(parsed: Partial<AppState> & { instances?: OverlayInstance[] }
   if (!scenes.some((s) => s.id === currentSceneId)) currentSceneId = scenes[0].id;
 
   const hotkeys = Array.isArray(parsed.hotkeys) ? parsed.hotkeys : [];
+  const closeAction =
+    parsed.closeAction === "quit" || parsed.closeAction === "tray" ? parsed.closeAction : undefined;
 
-  return { canvas, scenes, currentSceneId, streamerbot, obs, hotkeys };
+  return { canvas, scenes, currentSceneId, streamerbot, obs, hotkeys, closeAction };
 }
 
 /**
@@ -367,6 +370,17 @@ export class StateStore {
     this.state.currentSceneId = scene.id;
     this.touched();
     return true;
+  }
+
+  // --- app settings -------------------------------------------------------
+
+  getCloseAction(): CloseAction | undefined {
+    return this.state.closeAction;
+  }
+
+  setCloseAction(action: CloseAction): void {
+    this.state.closeAction = action;
+    this.touched();
   }
 
   // --- hotkeys / actions --------------------------------------------------

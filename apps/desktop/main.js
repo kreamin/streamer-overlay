@@ -2,7 +2,7 @@
 //   - Runs the server in-process (build/server.cjs, beside this file).
 //   - Env-aware paths via app.isPackaged.
 //   - Checks GitHub Releases for updates on launch (packaged only).
-const { app, BrowserWindow, globalShortcut, Tray, Menu } = require("electron");
+const { app, BrowserWindow, globalShortcut, Tray, Menu, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -14,6 +14,8 @@ let tray = null;
 let isQuitting = false; // true once the user really quits (tray → Quit)
 let toldAboutTray = false; // show the "still running" hint only the first time
 let booting = true; // during startup, don't let a transient "no windows" quit the app
+let closeAction; // "quit" | "tray" | undefined (undefined = ask on first close)
+let asking = false; // a close-preference dialog is currently open
 
 function iconPath() {
   return app.isPackaged
@@ -123,28 +125,78 @@ function createWindow() {
   });
   mainWindow.loadURL(`http://localhost:${PORT}/control/`);
 
-  // Closing the window hides it to the tray so the server keeps feeding OBS
-  // ("set and forget"). A real quit goes through the tray menu / before-quit.
-  // If the tray couldn't be created, fall through to a normal close instead.
+  // Closing the window follows the user's saved preference: quit, or minimise to
+  // the tray (server keeps feeding OBS). The first time — with no preference yet —
+  // we ask and remember the answer. If there's no tray, closing just quits.
   mainWindow.on("close", (e) => {
-    if (isQuitting || !tray) return;
-    e.preventDefault();
-    mainWindow.hide();
-    if (!toldAboutTray) {
-      toldAboutTray = true;
-      try {
-        tray.displayBalloon({
-          title: "Still running",
-          content: "Overlay is still in the tray and feeding OBS. Right-click the tray icon to quit.",
-        });
-      } catch {
-        /* balloons unsupported — ignore */
-      }
+    if (isQuitting || !tray) return; // real quit, or no tray → normal close/quit
+    if (closeAction === "quit") {
+      quitApp();
+      return;
     }
+    e.preventDefault();
+    if (closeAction === "tray") {
+      hideToTray();
+      return;
+    }
+    // No preference yet → ask once, remember it, then act on it.
+    if (asking) return;
+    asking = true;
+    askClosePreference()
+      .then((choice) => {
+        closeAction = choice;
+        try {
+          if (server) server.setCloseAction(choice);
+        } catch {
+          /* not our server (dev reuse) — can't persist; still honour it now */
+        }
+        if (choice === "quit") quitApp();
+        else hideToTray();
+      })
+      .finally(() => {
+        asking = false;
+      });
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+}
+
+function quitApp() {
+  isQuitting = true;
+  app.quit();
+}
+
+function hideToTray() {
+  if (!mainWindow) return;
+  mainWindow.hide();
+  if (tray && !toldAboutTray) {
+    toldAboutTray = true;
+    try {
+      tray.displayBalloon({
+        title: "Still running",
+        content: "Overlay is still in the tray and feeding OBS. Right-click the tray icon to quit.",
+      });
+    } catch {
+      /* balloons unsupported — ignore */
+    }
+  }
+}
+
+function askClosePreference() {
+  return dialog
+    .showMessageBox(mainWindow, {
+      type: "question",
+      buttons: ["Minimise to tray", "Quit"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+      title: "When you close the window…",
+      message: "Keep running in the tray, or quit?",
+      detail:
+        "Minimise to tray keeps the overlay running in the background so OBS keeps getting it. Quit closes it fully. You can change this any time in Settings.",
+    })
+    .then((r) => (r.response === 1 ? "quit" : "tray"));
 }
 
 function showWindow() {
@@ -168,13 +220,7 @@ function createTray() {
     Menu.buildFromTemplate([
       { label: "Open", click: showWindow },
       { type: "separator" },
-      {
-        label: "Quit",
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
-      },
+      { label: "Quit", click: quitApp },
     ]),
   );
   tray.on("double-click", showWindow);
@@ -313,9 +359,8 @@ async function updateBeforeLaunch() {
         finish(false);
       }, 180000);
       say("Downloading update v" + (info?.version ?? "") + "…");
-      if (typeof info?.releaseNotes === "string" && info.releaseNotes.trim()) {
-        notes(info.releaseNotes.trim());
-      }
+      const text = notesToText(info?.releaseNotes);
+      if (text) notes(text);
     });
     autoUpdater.on("download-progress", (p) => prog(Math.round(p?.percent ?? 0)));
     autoUpdater.on("update-not-available", (i) => {
@@ -382,8 +427,12 @@ async function boot() {
       mediaDir: paths.mediaDir,
       appVersion: app.getVersion(),
       onHotkeysChanged: registerHotkeys, // re-register when the user edits hotkeys
+      onCloseActionChanged: (a) => {
+        closeAction = a; // keep in sync when changed from the control panel
+      },
     });
     registerHotkeys(server.getHotkeys()); // register the saved hotkeys on launch
+    closeAction = server.getCloseAction(); // seed the saved close-button preference
   }
 
   createWindow();
@@ -392,7 +441,15 @@ async function boot() {
   app.on("activate", () => showWindow());
 }
 
-app.whenReady().then(boot);
+// Single-instance: a second launch just focuses the running one (avoids two
+// windows fighting over port 4747).
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => showWindow());
+  app.whenReady().then(boot);
+}
+
 app.on("before-quit", () => {
   isQuitting = true;
 });

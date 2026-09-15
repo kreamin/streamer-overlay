@@ -189,6 +189,9 @@ export interface CanvasConfig {
   height: number;
 }
 
+/** What the window's close (X) button does. Undefined = ask the user next time. */
+export type CloseAction = "quit" | "tray";
+
 /** The full shared state the server owns and persists. */
 export interface AppState {
   canvas: CanvasConfig;
@@ -200,6 +203,8 @@ export interface AppState {
   obs: ObsConfig;
   /** User-defined hotkeys/actions (keyboard shortcut + Stream Deck URL). */
   hotkeys: HotkeyAction[];
+  /** What the window's close button does; undefined until the user is asked once. */
+  closeAction?: CloseAction;
 }
 
 /** The scene that's currently live (rendered + edited). Falls back to the first. */
@@ -271,6 +276,8 @@ export type ClientMessage =
     }
   // Manually trigger an overlay instance to play (e.g. the gif alert Play button).
   | { type: "play"; instanceId: string }
+  // Persist what the window's close button does (quit vs minimise to tray).
+  | { type: "setCloseAction"; action: CloseAction }
   // Hotkeys / actions (fireable by keyboard shortcut or the /api/action URL).
   | { type: "addHotkey" }
   | { type: "removeHotkey"; hotkeyId: string }
