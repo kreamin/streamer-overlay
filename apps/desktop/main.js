@@ -13,6 +13,7 @@ let mainWindow = null; // the control-panel window (kept alive in the tray)
 let tray = null;
 let isQuitting = false; // true once the user really quits (tray → Quit)
 let toldAboutTray = false; // show the "still running" hint only the first time
+let booting = true; // during startup, don't let a transient "no windows" quit the app
 
 function iconPath() {
   return app.isPackaged
@@ -216,6 +217,34 @@ function createSplash() {
   return win;
 }
 
+// electron-updater returns GitHub release notes as HTML (GitHub renders the
+// release body — even a plain commit message becomes <p>…</p>/<ul><li>). The
+// splash shows plain text, so convert tags to text, decode a few entities, and
+// drop commit trailers so the "What's new" reads cleanly.
+function notesToText(raw) {
+  if (!raw) return "";
+  let s = Array.isArray(raw) ? raw.map((n) => (n && n.note) || "").join("\n\n") : String(raw);
+  s = s
+    .replace(/<\s*li[^>]*>/gi, "• ")
+    .replace(/<\s*\/(p|div|li|ul|ol|h[1-6])\s*>/gi, "\n")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#3?9;/gi, "'");
+  s = s
+    .split("\n")
+    .filter((l) => !/^\s*(co-authored-by:|🤖)/i.test(l))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+  return s;
+}
+
 // Update-on-startup: check GitHub Releases, and if there's a newer version show
 // a splash, download it, then install + relaunch into it BEFORE the app opens.
 // Returns true if we're installing (caller should stop booting — the app quits).
@@ -322,9 +351,19 @@ async function updateBeforeLaunch() {
 }
 
 async function boot() {
+  // Create the tray FIRST so the app has an anchor: when the update splash
+  // closes (no-update path) there's briefly no window, and without this the
+  // OS "window-all-closed" event would quit the app before the main window
+  // opens. The `booting` guard below is the belt-and-suspenders for this.
+  createTray();
+
   // Update-on-startup: if a newer version is downloaded, this quits + relaunches
   // into it, so we never reach the server/window below.
-  if (await updateBeforeLaunch()) return;
+  try {
+    if (await updateBeforeLaunch()) return;
+  } catch {
+    /* update path failed — fall through and launch the app normally */
+  }
 
   const paths = resolvePaths();
   seedOverlays(paths);
@@ -348,7 +387,7 @@ async function boot() {
   }
 
   createWindow();
-  createTray();
+  booting = false; // startup done — window-all-closed may now act normally
 
   app.on("activate", () => showWindow());
 }
@@ -357,9 +396,11 @@ app.whenReady().then(boot);
 app.on("before-quit", () => {
   isQuitting = true;
 });
-// With the tray active we stay running after the window closes (set and forget).
-// Without a tray, closing the last window quits as usual.
+// During startup, ignore transient "no windows" (the update splash closing
+// before the main window opens) so we never quit mid-boot. After startup: with a
+// tray we stay running (set and forget); without one, closing the last window quits.
 app.on("window-all-closed", () => {
+  if (booting) return;
   if (!tray) app.quit();
 });
 app.on("will-quit", async () => {
