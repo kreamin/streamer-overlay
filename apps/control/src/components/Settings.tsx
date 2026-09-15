@@ -11,11 +11,13 @@ const PRESETS = [
 export function Settings({
   state,
   integration,
+  version,
   send,
   onClose,
 }: {
   state: AppState;
   integration: IntegrationStatus;
+  version: string;
   send: (msg: ClientMessage) => void;
   onClose: () => void;
 }) {
@@ -288,6 +290,10 @@ export function Settings({
             </button>
           </div>
         </section>
+
+        <div className="mt-6 border-t border-white/10 pt-3 text-center text-xs text-white/30">
+          kreamin's Streamin Overlay · v{version || "—"}
+        </div>
       </div>
     </div>
   );

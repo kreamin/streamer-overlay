@@ -10,7 +10,7 @@ import { Settings } from "./components/Settings";
 import { HotkeysPage } from "./components/HotkeysPage";
 
 export function App() {
-  const { state, installed, variables, integration, hotkeyStatus, connected, send } =
+  const { state, installed, variables, integration, hotkeyStatus, version, connected, send } =
     useControlStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -198,6 +198,7 @@ export function App() {
         <Settings
           state={state}
           integration={integration}
+          version={version}
           send={send}
           onClose={() => setShowSettings(false)}
         />

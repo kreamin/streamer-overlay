@@ -22,6 +22,7 @@ export function useControlStore() {
     ingestClients: 0,
   });
   const [hotkeyStatus, setHotkeyStatus] = useState<Record<string, boolean>>({});
+  const [version, setVersion] = useState<string>("");
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -41,6 +42,7 @@ export function useControlStore() {
           setInstalled(msg.installed);
           setVariables(msg.variables);
           setIntegration(msg.integration);
+          setVersion(msg.version);
         } else if (msg.type === "state") {
           setState(msg.state);
         } else if (msg.type === "installed") {
@@ -72,5 +74,5 @@ export function useControlStore() {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
   }, []);
 
-  return { state, installed, variables, integration, hotkeyStatus, connected, send };
+  return { state, installed, variables, integration, hotkeyStatus, version, connected, send };
 }

@@ -217,6 +217,8 @@ export type ServerMessage =
       installed: InstalledOverlay[];
       variables: Variables;
       integration: IntegrationStatus;
+      /** App version (from the desktop build), for display/debugging. "dev" in dev. */
+      version: string;
     }
   | { type: "state"; state: AppState }
   | { type: "installed"; installed: InstalledOverlay[] }

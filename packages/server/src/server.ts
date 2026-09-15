@@ -31,6 +31,8 @@ export interface ServerConfig {
   controlDist: string;
   /** Writable dir for user-uploaded media (gifs/images), served at /media. */
   mediaDir: string;
+  /** App version (from the desktop build) shown in the control panel. "dev" if unset. */
+  appVersion?: string;
   /** Called (on changes) with the current hotkeys so the desktop app can (re)register global shortcuts. */
   onHotkeysChanged?: (hotkeys: HotkeyAction[]) => void;
 }
@@ -318,6 +320,7 @@ export async function startServer(config: ServerConfig): Promise<RunningServer> 
         installed: registry.list(),
         variables: variables.all(),
         integration: integration(),
+        version: config.appVersion ?? "dev",
       } satisfies ServerMessage),
     );
 

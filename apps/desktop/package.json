@@ -1,7 +1,7 @@
 {
   "name": "@stream-overlay/desktop",
   "productName": "kreamin's Streamin Overlay",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "kreamin's Streamin Overlay",
   "author": "Noah",

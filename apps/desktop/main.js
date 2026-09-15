@@ -2,13 +2,23 @@
 //   - Runs the server in-process (build/server.cjs, beside this file).
 //   - Env-aware paths via app.isPackaged.
 //   - Checks GitHub Releases for updates on launch (packaged only).
-const { app, BrowserWindow, globalShortcut } = require("electron");
+const { app, BrowserWindow, globalShortcut, Tray, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const net = require("node:net");
 
 const PORT = 4747;
 let server = null; // RunningServer handle (only set when WE started it)
+let mainWindow = null; // the control-panel window (kept alive in the tray)
+let tray = null;
+let isQuitting = false; // true once the user really quits (tray → Quit)
+let toldAboutTray = false; // show the "still running" hint only the first time
+
+function iconPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "icon.ico")
+    : path.join(__dirname, "..", "icon.ico");
+}
 
 // (Re)register OS-global keyboard shortcuts for the app's hotkeys. Each press
 // fires the same action the /api/action URL does. Reports back which ones
@@ -102,17 +112,72 @@ function isPortInUse(port) {
 }
 
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     title: "kreamin's Streamin Overlay",
-    icon: app.isPackaged
-      ? path.join(process.resourcesPath, "icon.ico")
-      : path.join(__dirname, "..", "icon.ico"),
+    icon: iconPath(),
     backgroundColor: "#0b0e14",
     autoHideMenuBar: true,
   });
-  win.loadURL(`http://localhost:${PORT}/control/`);
+  mainWindow.loadURL(`http://localhost:${PORT}/control/`);
+
+  // Closing the window hides it to the tray so the server keeps feeding OBS
+  // ("set and forget"). A real quit goes through the tray menu / before-quit.
+  // If the tray couldn't be created, fall through to a normal close instead.
+  mainWindow.on("close", (e) => {
+    if (isQuitting || !tray) return;
+    e.preventDefault();
+    mainWindow.hide();
+    if (!toldAboutTray) {
+      toldAboutTray = true;
+      try {
+        tray.displayBalloon({
+          title: "Still running",
+          content: "Overlay is still in the tray and feeding OBS. Right-click the tray icon to quit.",
+        });
+      } catch {
+        /* balloons unsupported — ignore */
+      }
+    }
+  });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+}
+
+function showWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  try {
+    tray = new Tray(iconPath());
+  } catch {
+    return; // no tray (rare) — app still works; the window just closes normally
+  }
+  tray.setToolTip("kreamin's Streamin Overlay");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open", click: showWindow },
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+  tray.on("double-click", showWindow);
+  tray.on("click", showWindow);
 }
 
 // A small frameless splash shown while we check/download an update on startup.
@@ -276,21 +341,29 @@ async function boot() {
       overlayDist: paths.overlayDist,
       controlDist: paths.controlDist,
       mediaDir: paths.mediaDir,
+      appVersion: app.getVersion(),
       onHotkeysChanged: registerHotkeys, // re-register when the user edits hotkeys
     });
     registerHotkeys(server.getHotkeys()); // register the saved hotkeys on launch
   }
 
   createWindow();
+  createTray();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on("activate", () => showWindow());
 }
 
 app.whenReady().then(boot);
-app.on("window-all-closed", () => app.quit());
+app.on("before-quit", () => {
+  isQuitting = true;
+});
+// With the tray active we stay running after the window closes (set and forget).
+// Without a tray, closing the last window quits as usual.
+app.on("window-all-closed", () => {
+  if (!tray) app.quit();
+});
 app.on("will-quit", async () => {
   globalShortcut.unregisterAll();
+  if (tray) tray.destroy();
   if (server) await server.close();
 });
