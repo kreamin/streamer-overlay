@@ -22,6 +22,13 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Fail fast if the tag and the app version disagree. electron-builder
+      # publishes to v${version}, so a mismatch would try to publish into an
+      # already-released version and fail minutes into the build.
+      - name: Check versions match the tag
+        if: github.ref_type == 'tag'
+        run: node scripts/check-release-version.mjs "${{ github.ref_name }}"
+
       - name: Install dependencies
         run: npm ci
 

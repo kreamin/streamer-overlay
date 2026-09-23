@@ -62,11 +62,14 @@ export function Settings({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
     >
+      {/* Capped to the viewport so the modal scrolls instead of overflowing the
+          window (it's taller than the default window height). */}
       <div
-        className="w-[460px] max-w-full rounded-xl bg-[#11151c] p-6 ring-1 ring-white/10"
+        className="flex max-h-[90vh] w-[460px] max-w-full flex-col rounded-xl bg-[#11151c] ring-1 ring-white/10"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-5 flex items-center justify-between">
+        {/* Header stays pinned so ✕ is always reachable. */}
+        <div className="flex shrink-0 items-center justify-between px-6 pb-4 pt-6">
           <h2 className="text-base font-semibold">Settings</h2>
           <button
             onClick={onClose}
@@ -76,6 +79,8 @@ export function Settings({
           </button>
         </div>
 
+        {/* Scrollable body. min-h-0 is required for overflow inside a flex column. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         {/* Output resolution */}
         <section className="mb-6">
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
@@ -327,8 +332,9 @@ export function Settings({
           )}
         </section>
 
-        <div className="mt-6 border-t border-white/10 pt-3 text-center text-xs text-white/30">
-          kreamin's Streamin Overlay · v{version || "—"}
+          <div className="mt-6 border-t border-white/10 pt-3 text-center text-xs text-white/30">
+            kreamin's Streamin Overlay · v{version || "—"}
+          </div>
         </div>
       </div>
     </div>
